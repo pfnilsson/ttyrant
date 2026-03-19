@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,11 +20,8 @@ const (
 const (
 	prefixW  = 6  // cursor(2) + id(1) + space(1) + dot(1) + space(1)
 	statusW  = 12 // fixed width for status label
-	nameW    = 16
 	eventW   = 18
 	ageW     = 8
-	maxDirW  = 50
-	minDirW  = 12
 )
 
 func statusDot(s model.SessionStatus) string {
@@ -70,22 +66,22 @@ func statusLabel(s model.SessionStatus) string {
 	}
 }
 
-func dirColWidth(totalWidth int) int {
-	fixedW := prefixW + statusW + nameW + eventW + ageW + 4 // 4 = spaces between columns
-	dirW := max(totalWidth-fixedW, minDirW)
-	return min(dirW, maxDirW)
+func sessionColWidth(totalWidth int) int {
+	fixedW := prefixW + statusW + eventW + ageW + 4 // 4 = spaces between columns
+	return max(totalWidth-fixedW, 12)
 }
 
 func renderTableHeader(width int) string {
-	dirW := dirColWidth(width)
-	hdr := fmt.Sprintf("%*s%-*s %-*s %-*s %-*s %s",
+	nw := sessionColWidth(width)
+	rightW := eventW + 1 + ageW // "LAST EVENT" + space + "AGE"
+	right := fmt.Sprintf("%*s %*s", eventW, "LAST EVENT", ageW, "AGE")
+	left := fmt.Sprintf("%*s%-*s %-*s",
 		prefixW, "",
 		statusW, "STATUS",
-		nameW, "SESSION",
-		dirW, "DIRECTORY",
-		eventW, "LAST EVENT",
-		"AGE",
+		nw, "SESSION",
 	)
+	pad := max(width-lipgloss.Width(left)-rightW, 0)
+	hdr := left + strings.Repeat(" ", pad) + right
 	return styleHeader.Width(width).Render(hdr)
 }
 
@@ -94,14 +90,14 @@ func renderTable(rows []model.SessionRow, cursor int, width int) string {
 		return ""
 	}
 
-	dirW := dirColWidth(width)
+	nw := sessionColWidth(width)
 
 	var b strings.Builder
 
 	// Rows.
 	for i, row := range rows {
 		selected := i == cursor
-		line := formatTableRow(i, row, nameW, dirW, eventW, ageW, selected)
+		line := formatTableRow(i, row, nw, width, selected)
 		if row.Status == model.StatusDone || row.Status == model.StatusExited {
 			b.WriteString(styleDimmed.Render(line))
 		} else if selected {
@@ -115,7 +111,7 @@ func renderTable(rows []model.SessionRow, cursor int, width int) string {
 	return b.String()
 }
 
-func formatTableRow(idx int, row model.SessionRow, nameW, dirW, eventW, _ int, selected bool) string {
+func formatTableRow(idx int, row model.SessionRow, nameW, totalW int, selected bool) string {
 	// Cursor indicator.
 	cursor := "  "
 	if selected {
@@ -136,8 +132,6 @@ func formatTableRow(idx int, row model.SessionRow, nameW, dirW, eventW, _ int, s
 		name = name[:nameW-1] + "~"
 	}
 
-	dir := truncateDir(row.Cwd, dirW)
-
 	event := row.LastEvent
 	if event == "" {
 		event = "-"
@@ -155,47 +149,17 @@ func formatTableRow(idx int, row model.SessionRow, nameW, dirW, eventW, _ int, s
 		statusPad = strings.Repeat(" ", statusW-statusVisible)
 	}
 
-	return fmt.Sprintf("%s%s %s %s%s %-*s %-*s %-*s %s",
-		cursor,
-		id,
-		dot,
+	left := fmt.Sprintf("%s%s %s %s%s %-*s",
+		cursor, id, dot,
 		status, statusPad,
 		nameW, name,
-		dirW, dir,
-		eventW, event,
-		age,
 	)
-}
 
-func truncateDir(dir string, maxWidth int) string {
-	if dir == "" || maxWidth <= 0 {
-		return ""
-	}
+	rightW := eventW + 1 + ageW
+	right := fmt.Sprintf("%*s %*s", eventW, event, ageW, age)
+	pad := max(totalW-lipgloss.Width(left)-rightW, 0)
 
-	// Shorten home prefix.
-	if strings.HasPrefix(dir, "/home/") {
-		parts := strings.SplitN(dir, "/", 4)
-		if len(parts) >= 4 {
-			dir = "~/" + parts[3]
-		}
-	}
-
-	runes := []rune(dir)
-	if len(runes) <= maxWidth {
-		return dir
-	}
-
-	if maxWidth <= 3 {
-		return string(runes[:maxWidth])
-	}
-
-	base := filepath.Base(dir)
-	baseRunes := []rune(base)
-	if len(baseRunes)+5 <= maxWidth {
-		return ".../" + base
-	}
-
-	return string(runes[:maxWidth-3]) + "..."
+	return left + strings.Repeat(" ", pad) + right
 }
 
 func formatDuration(d time.Duration) string {
