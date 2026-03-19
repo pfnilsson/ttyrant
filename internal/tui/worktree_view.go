@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -347,10 +346,7 @@ func (m Model) handlePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		m.wtNewStep = 0
 		attachCmd := tmux.AttachSessionCmd(sessionName)
-		if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
-			return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
-		}
-		return m, tea.ExecProcess(attachCmd, nil)
+		return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
 	}
 
 	m.wtNewStep = 0
@@ -368,10 +364,7 @@ func (m Model) attachWorktreeWindow(window int) (tea.Model, tea.Cmd) {
 	}
 
 	cmd := tmux.AttachCmd(row.sessionName, window)
-	if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
-		return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
-	}
-	return m, tea.ExecProcess(cmd, nil)
+	return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
 }
 
 func (m Model) viewWorktrees() string {

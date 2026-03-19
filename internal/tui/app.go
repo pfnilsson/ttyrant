@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -126,7 +125,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(tickCmd(), refreshCmd(m.scanner))
 
 	case refreshMsg:
-		if !m.loaded && !msg.hooksInstalled {
+		firstLoad := !m.loaded
+		if firstLoad && !msg.hooksInstalled {
 			m.showHooksPrompt = true
 		}
 		m.loaded = true
@@ -135,6 +135,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.hooksInstalled = msg.hooksInstalled
 		sortRows(m.rows)
 		m.clampCursor()
+		if firstLoad && len(m.rows) == 0 && !m.showHooksPrompt {
+			return m.startOpen()
+		}
 		return m, nil
 
 	case installResultMsg:
@@ -283,10 +286,7 @@ func (m Model) attachTmuxSession() (tea.Model, tea.Cmd) {
 		name := m.rows[m.cursor].SessionName
 		if name != "" {
 			cmd := tmux.AttachSessionCmd(name)
-			if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
-				return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
-			}
-			return m, tea.ExecProcess(cmd, nil)
+			return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
 		}
 	}
 	return m, nil
@@ -297,10 +297,7 @@ func (m Model) attachTmux(window int) (tea.Model, tea.Cmd) {
 		name := m.rows[m.cursor].SessionName
 		if name != "" {
 			cmd := tmux.AttachCmd(name, window)
-			if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
-				return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
-			}
-			return m, tea.ExecProcess(tmux.AttachCmd(name, window), nil)
+			return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
 		}
 	}
 	return m, nil
@@ -404,10 +401,7 @@ func (m Model) handleOpenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		m.openStep = 0
 		attachCmd := tmux.AttachSessionCmd(sessionName)
-		if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
-			return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
-		}
-		return m, tea.ExecProcess(attachCmd, nil)
+		return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
 	}
 
 	return m, nil
@@ -425,10 +419,7 @@ func (m Model) openNonBareProject(proj worktree.Project) (tea.Model, tea.Cmd) {
 	}
 
 	cmd := tmux.AttachSessionCmd(name)
-	if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
-		return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
-	}
-	return m, tea.ExecProcess(cmd, nil)
+	return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
 }
 
 func (m Model) openBareWorktree(proj worktree.Project, wt worktree.Worktree) (tea.Model, tea.Cmd) {
@@ -443,10 +434,7 @@ func (m Model) openBareWorktree(proj worktree.Project, wt worktree.Worktree) (te
 	}
 
 	cmd := tmux.AttachSessionCmd(name)
-	if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
-		return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
-	}
-	return m, tea.ExecProcess(cmd, nil)
+	return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
 }
 
 func (m Model) quitCmd() tea.Msg {
