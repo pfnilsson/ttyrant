@@ -66,21 +66,26 @@ func statusLabel(s model.SessionStatus) string {
 	}
 }
 
+const rightPad = 2 // breathing room from right edge
+
+func rightBlockStart(totalWidth int) int {
+	return totalWidth - eventW - 1 - ageW - rightPad
+}
+
 func sessionColWidth(totalWidth int) int {
-	fixedW := prefixW + statusW + eventW + ageW + 4 // 4 = spaces between columns
+	fixedW := prefixW + statusW + eventW + ageW + 4 + rightPad
 	return max(totalWidth-fixedW, 12)
 }
 
 func renderTableHeader(width int) string {
-	nw := sessionColWidth(width)
-	rightW := eventW + 1 + ageW // "LAST EVENT" + space + "AGE"
-	right := fmt.Sprintf("%*s %*s", eventW, "LAST EVENT", ageW, "AGE")
-	left := fmt.Sprintf("%*s%-*s %-*s",
+	left := fmt.Sprintf("%*s%-*s %s",
 		prefixW, "",
 		statusW, "STATUS",
-		nw, "SESSION",
+		"SESSION",
 	)
-	pad := max(width-lipgloss.Width(left)-rightW, 0)
+	rStart := rightBlockStart(width)
+	pad := max(rStart-lipgloss.Width(left), 0)
+	right := fmt.Sprintf("%-*s %-*s", eventW, "LAST EVENT", ageW, "AGE")
 	hdr := left + strings.Repeat(" ", pad) + right
 	return styleHeader.Width(width).Render(hdr)
 }
@@ -155,9 +160,9 @@ func formatTableRow(idx int, row model.SessionRow, nameW, totalW int, selected b
 		nameW, name,
 	)
 
-	rightW := eventW + 1 + ageW
-	right := fmt.Sprintf("%*s %*s", eventW, event, ageW, age)
-	pad := max(totalW-lipgloss.Width(left)-rightW, 0)
+	rStart := rightBlockStart(totalW)
+	pad := max(rStart-lipgloss.Width(left), 0)
+	right := fmt.Sprintf("%-*s %-*s", eventW, event, ageW, age)
 
 	return left + strings.Repeat(" ", pad) + right
 }

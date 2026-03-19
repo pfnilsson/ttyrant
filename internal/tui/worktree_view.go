@@ -74,7 +74,6 @@ func wtRefreshCmd() tea.Cmd {
 const (
 	wtPrefixW  = 6 // cursor(2) + id(1) + space(1) + dot(1) + space(1)
 	wtRepoW    = 20
-	wtBranchW  = 24
 )
 
 func wtSessionDot(hasSession bool) string {
@@ -85,11 +84,10 @@ func wtSessionDot(hasSession bool) string {
 }
 
 func renderWtHeader(width int) string {
-	hdr := fmt.Sprintf("%*s%-*s %-*s %s",
+	hdr := fmt.Sprintf("%*s%-*s %s",
 		wtPrefixW, "",
 		wtRepoW, "REPO",
-		wtBranchW, "BRANCH",
-		"SESSION",
+		"BRANCH",
 	)
 	return styleHeader.Width(width).Render(hdr)
 }
@@ -131,21 +129,10 @@ func formatWtRow(idx int, row wtRow, selected bool) string {
 		repoName = repoName[:wtRepoW-1] + "~"
 	}
 
-	branch := row.branch
-	if len(branch) > wtBranchW {
-		branch = branch[:wtBranchW-1] + "~"
-	}
-
-	session := row.sessionName
-	if !row.hasSession {
-		session = "–"
-	}
-
-	return fmt.Sprintf("%s%s %s %-*s %-*s %s",
+	return fmt.Sprintf("%s%s %s %-*s %s",
 		cursor, id, dot,
 		wtRepoW, repoName,
-		wtBranchW, branch,
-		session,
+		row.branch,
 	)
 }
 
