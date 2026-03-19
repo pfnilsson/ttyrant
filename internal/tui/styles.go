@@ -133,17 +133,4 @@ var (
 				Foreground(colorGreen).
 				Bold(true)
 
-	// Picker selected row background.
-	stylePickerSelected = lipgloss.NewStyle().
-				Background(colorSurface1).
-				Foreground(colorMauve).
-				Bold(true)
-
-	// Picker dialog — wider than the small confirmation dialogs.
-	stylePickerDialog = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(colorPrimary).
-				Padding(1, 3).
-				Width(60).
-				Foreground(colorText)
 )

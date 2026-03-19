@@ -9,8 +9,6 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-const pickerVisibleRows = 20
-
 type picker struct {
 	title   string
 	hint    string
@@ -120,6 +118,8 @@ func (p *picker) update(msg tea.KeyMsg) (string, bool, tea.Cmd) {
 }
 
 func (p picker) view(width, height int) string {
+	innerW := width - 2 // border left + right
+
 	var b strings.Builder
 
 	b.WriteString(styleDialogTitle.Render(p.title))
@@ -127,13 +127,20 @@ func (p picker) view(width, height int) string {
 	b.WriteString(p.input.View())
 	b.WriteString("\n\n")
 
+	// Use available height for rows: total - title(1) - gaps(2) - input(1) - gap(1) - footer(1-2) - frame(2).
+	footerLines := 1
+	if p.hint != "" {
+		footerLines = 2
+	}
+	visibleRows := max(height-8-footerLines, 3)
+
 	// Render visible rows with scrolling to keep cursor in view.
 	n := len(p.matches)
 	start := 0
-	if p.cursor >= pickerVisibleRows {
-		start = p.cursor - pickerVisibleRows + 1
+	if p.cursor >= visibleRows {
+		start = p.cursor - visibleRows + 1
 	}
-	end := min(start+pickerVisibleRows, n)
+	end := min(start+visibleRows, n)
 
 	for i := start; i < end; i++ {
 		m := p.matches[i]
@@ -153,7 +160,7 @@ func (p picker) view(width, height int) string {
 
 	// Pad remaining rows to keep window static.
 	rendered := end - start
-	for range pickerVisibleRows - rendered {
+	for range visibleRows - rendered {
 		b.WriteString("\n")
 	}
 
@@ -163,10 +170,7 @@ func (p picker) view(width, height int) string {
 		b.WriteString("\n" + styleHelp.Render(p.hint))
 	}
 
-	popup := stylePickerDialog.Render(b.String())
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, popup,
-		lipgloss.WithWhitespaceChars(" "),
-	)
+	return styleFrame.Width(innerW).Height(height - 2).Render(b.String())
 }
 
 // highlightMatchInLabel highlights matched characters within the name portion
