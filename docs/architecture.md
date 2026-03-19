@@ -6,6 +6,9 @@ ttyrant is a single binary with multiple subcommands:
 
 - **`ttyrant`** — TUI dashboard (default, no arguments)
 - **`ttyrant hook`** — subcommand invoked by Claude Code hooks
+- **`ttyrant scan`** — lists running Claude Code processes
+- **`ttyrant install-hooks`** / **`uninstall-hooks`** — manage Claude Code hook registration
+- **`ttyrant doctor`** — diagnostic checks
 
 ## Data Flow
 
@@ -47,7 +50,12 @@ Lists tmux sessions, finds sessions by directory, generates attach/switch comman
 Combines tmux sessions (primary rows), Claude processes, and hook state into `SessionRow` entries. Tmux sessions are always shown. Claude data enriches matching sessions by directory (exact match or child path).
 
 ### `internal/tui`
-Bubble Tea model with 2-second refresh loop. Renders a table with status, session name, directory, last event, and idle time.
+Bubble Tea model with 2-second refresh loop and two views:
+- **Sessions view** — tmux sessions with Claude status, directory, last event, and idle time
+- **Worktrees view** — git worktrees grouped by bare repo, with branch, head commit, and session status
+
+### `internal/worktree`
+Scans for bare git repositories under `~/Projects` and `~/.config`. Lists worktrees per repo with branch and head commit. Supports creating new worktrees (with tmux session), deleting worktrees (cleans up tmux session and git worktree), and cloning bare repos by URL.
 
 ### `internal/audio`
 Embeds a notification sound via `//go:embed`. Plays asynchronously using the first available player (`paplay`, `aplay`, `afplay`). Only triggers on `working → done` or `working → needs_input` transitions when the user hasn't submitted a prompt in the last 15 seconds.
@@ -71,3 +79,7 @@ Runs diagnostic checks: scanner, state directory, hooks config, ttyrant in PATH.
 5. **Sound cooldown.** Audio notifications are suppressed for 15 seconds after the user's last prompt to avoid noise during synchronous interaction.
 
 6. **Directory matching.** Claude processes are matched to tmux sessions by cwd. Child directories also match (e.g., Claude running in `/project/subdir` matches tmux session at `/project`).
+
+7. **Bare repo convention.** Worktree management assumes bare repos (`git clone --bare`). Worktrees are created as subdirectories of the bare repo and get their own tmux sessions with nvim + terminal windows.
+
+8. **State caching.** Session rows are cached to `~/.local/state/ttyrant/cache.json` for fast startup.
