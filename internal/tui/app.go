@@ -154,6 +154,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, wtRefreshCmd()
 
+	case wtCreateResultMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		attachCmd := tmux.AttachSessionCmd(msg.sessionName)
+		return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
+
+	case wtDeleteResultMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		return m, wtRefreshCmd()
+
 	case wtRefreshMsg:
 		m.wtRows = msg.rows
 		if msg.err != nil {

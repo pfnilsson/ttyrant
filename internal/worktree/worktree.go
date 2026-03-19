@@ -202,12 +202,68 @@ func CreateWorktree(repoPath, branch string) (string, error) {
 	return wtPath, nil
 }
 
+// CreateWorktreeCmd returns the worktree path and an exec.Cmd that creates it
+// with output visible to the user. Returns ("", nil) if the worktree already exists.
+func CreateWorktreeCmd(repoPath, branch string) (string, *exec.Cmd) {
+	wtPath := filepath.Join(repoPath, branch)
+
+	if _, err := os.Stat(wtPath); err == nil {
+		return wtPath, nil
+	}
+
+	script := fmt.Sprintf(
+		`git -C %q worktree add %q %q 2>&1 || git -C %q worktree add -b %q %q 2>&1`,
+		repoPath, wtPath, branch,
+		repoPath, branch, wtPath,
+	)
+	return wtPath, exec.Command("sh", "-c", script)
+}
+
 // RemoveWorktree removes a git worktree.
 func RemoveWorktree(repoPath, worktreePath string) error {
 	if err := exec.Command("git", "-C", repoPath, "worktree", "remove", worktreePath).Run(); err != nil {
 		return fmt.Errorf("remove worktree: %w", err)
 	}
 	return nil
+}
+
+// RemoveWorktreeCmd returns an exec.Cmd that removes a worktree with output visible.
+func RemoveWorktreeCmd(repoPath, worktreePath string) *exec.Cmd {
+	return exec.Command("git", "-C", repoPath, "worktree", "remove", worktreePath)
+}
+
+// CloneBareCmd returns an exec.Cmd that clones a bare repo with output visible,
+// and performs the remaining setup steps.
+func CloneBareCmd(url, projectsDir string) (*exec.Cmd, error) {
+	name := filepath.Base(url)
+	name = strings.TrimSuffix(name, ".git")
+
+	repoPath := filepath.Join(projectsDir, name)
+	barePath := filepath.Join(repoPath, ".bare")
+	gitFile := filepath.Join(repoPath, ".git")
+
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		return nil, fmt.Errorf("mkdir: %w", err)
+	}
+
+	script := fmt.Sprintf(`set -e
+git clone --bare %q %q
+echo "gitdir: .bare" > %q
+git -C %q config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+echo "Fetching branches..."
+git -C %q fetch origin
+MAIN=$(git -C %q symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || echo "main")
+echo "Creating worktree $MAIN..."
+git -C %q worktree add %q/"$MAIN" "$MAIN"
+echo "Done."`,
+		url, barePath,
+		gitFile,
+		repoPath,
+		repoPath,
+		repoPath,
+		repoPath, repoPath,
+	)
+	return exec.Command("sh", "-c", script), nil
 }
 
 // CloneBare clones a repository as a bare repo set up for worktrees.

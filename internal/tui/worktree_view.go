@@ -211,6 +211,15 @@ func (m Model) startClone() (tea.Model, tea.Cmd) {
 
 type wtCloneResultMsg struct{ err error }
 
+type wtCreateResultMsg struct {
+	sessionName string
+	err         error
+}
+
+type wtDeleteResultMsg struct {
+	err error
+}
+
 func (m Model) handleWtClone(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyCtrlC {
 		return m, m.quitCmd
@@ -226,10 +235,14 @@ func (m Model) handleWtClone(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.wtCloneActive = false
-		return m, func() tea.Msg {
-			err := worktree.CloneBare(url, worktree.ProjectsDir())
-			return wtCloneResultMsg{err: err}
+		gitCmd, err := worktree.CloneBareCmd(url, worktree.ProjectsDir())
+		if err != nil {
+			m.err = err
+			return m, nil
 		}
+		return m, tea.ExecProcess(gitCmd, func(err error) tea.Msg {
+			return wtCloneResultMsg{err: err}
+		})
 	}
 
 	var cmd tea.Cmd
@@ -243,15 +256,17 @@ func (m Model) handleWtConfirmDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.wtConfirmDelete = false
 		if m.wtCursor < len(m.wtRows) {
 			row := m.wtRows[m.wtCursor]
-			// Kill tmux session if it exists.
 			if row.hasSession {
 				tmux.KillSession(row.sessionName)
 			}
-			if err := worktree.RemoveWorktree(row.repoPath, row.worktreePath); err != nil {
-				m.err = err
-			}
+			cmd := worktree.RemoveWorktreeCmd(row.repoPath, row.worktreePath)
+			return m, tea.Sequence(
+				tea.ExecProcess(cmd, func(err error) tea.Msg {
+					return wtDeleteResultMsg{err: err}
+				}),
+			)
 		}
-		return m, wtRefreshCmd()
+		return m, nil
 	default:
 		m.wtConfirmDelete = false
 		return m, nil
@@ -330,23 +345,33 @@ func (m Model) handlePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openBranchPicker()
 
 	case 2: // branch selected
-		wtPath, err := worktree.CreateWorktree(m.wtNewRepoPath, selected)
-		if err != nil {
-			m.err = err
-			m.wtNewStep = 0
-			return m, nil
-		}
-
-		sessionName := worktree.SessionName(m.wtNewRepoName, selected)
-		if err := tmux.CreateWorktreeSession(sessionName, wtPath, m.wtNewRepoName, selected); err != nil {
-			m.err = err
-			m.wtNewStep = 0
-			return m, nil
-		}
-
+		repoPath := m.wtNewRepoPath
+		repoName := m.wtNewRepoName
+		branch := selected
 		m.wtNewStep = 0
-		attachCmd := tmux.AttachSessionCmd(sessionName)
-		return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
+
+		wtPath, gitCmd := worktree.CreateWorktreeCmd(repoPath, branch)
+		if gitCmd == nil {
+			// Worktree already exists, just create session and attach.
+			sessionName := worktree.SessionName(repoName, branch)
+			if err := tmux.CreateWorktreeSession(sessionName, wtPath, repoName, branch); err != nil {
+				m.err = err
+				return m, nil
+			}
+			attachCmd := tmux.AttachSessionCmd(sessionName)
+			return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
+		}
+
+		return m, tea.ExecProcess(gitCmd, func(err error) tea.Msg {
+			if err != nil {
+				return wtCreateResultMsg{err: err}
+			}
+			sessionName := worktree.SessionName(repoName, branch)
+			if err := tmux.CreateWorktreeSession(sessionName, wtPath, repoName, branch); err != nil {
+				return wtCreateResultMsg{err: err}
+			}
+			return wtCreateResultMsg{sessionName: sessionName}
+		})
 	}
 
 	m.wtNewStep = 0
