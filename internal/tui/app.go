@@ -15,9 +15,17 @@ import (
 	"github.com/pfnilsson/ttyrant/internal/scanner"
 	"github.com/pfnilsson/ttyrant/internal/state"
 	"github.com/pfnilsson/ttyrant/internal/tmux"
+	"github.com/pfnilsson/ttyrant/internal/worktree"
 )
 
 const refreshInterval = 2 * time.Second
+
+type viewMode int
+
+const (
+	viewSessions  viewMode = iota
+	viewWorktrees
+)
 
 // Model is the Bubble Tea model for the ttyrant TUI.
 type Model struct {
@@ -33,6 +41,20 @@ type Model struct {
 	hooksInstalled bool
 	scanner        *scanner.Scanner
 	err            error
+
+	viewMode viewMode
+	wtRows   []wtRow
+	wtCursor int
+
+	wtConfirmDelete bool
+	wtCloneActive   bool
+	wtNewStep       int // 0=none, 1=repo picker, 2=branch picker
+	wtNewRepoName string
+	wtNewRepoPath string
+	picker        picker
+
+	openStep    int // 0=none, 1=project picker, 2=worktree picker (bare repo)
+	openProject worktree.Project
 }
 
 // New creates the initial TUI model.
@@ -98,6 +120,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
+		if m.viewMode == viewWorktrees {
+			return m, tea.Batch(tickCmd(), wtRefreshCmd())
+		}
 		return m, tea.Batch(tickCmd(), refreshCmd(m.scanner))
 
 	case refreshMsg:
@@ -120,8 +145,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case wtCloneResultMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		return m, wtRefreshCmd()
+
+	case wtRefreshMsg:
+		m.wtRows = msg.rows
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		m.clampWtCursor()
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	default:
+		// Forward non-key messages (e.g. cursor blink) to active picker.
+		if m.wtNewStep > 0 || m.openStep > 0 {
+			var cmd tea.Cmd
+			m.picker.input, cmd = m.picker.input.Update(msg)
+			return m, cmd
+		}
 	}
 
 	return m, nil
@@ -136,6 +183,26 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if m.confirmKill {
 		return m.handleConfirmKill(msg)
+	}
+
+	if m.wtConfirmDelete {
+		return m.handleWtConfirmDelete(msg)
+	}
+
+	if m.wtCloneActive {
+		return m.handleWtClone(msg)
+	}
+
+	if m.wtNewStep > 0 {
+		return m.handlePickerKey(msg)
+	}
+
+	if m.openStep > 0 {
+		return m.handleOpenKey(msg)
+	}
+
+	if m.viewMode == viewWorktrees {
+		return m.handleWorktreeKey(msg)
 	}
 
 	// Number keys 1-9: attach to session by row number.
@@ -170,6 +237,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.attachTmux(1)
 	case keyAttachTmux2:
 		return m.attachTmux(2)
+	case keyWorktree:
+		m.viewMode = viewWorktrees
+		return m, wtRefreshCmd()
+	case keyOpen:
+		return m.startOpen()
 	}
 
 	return m, nil
@@ -234,6 +306,147 @@ func (m Model) attachTmux(window int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) startOpen() (tea.Model, tea.Cmd) {
+	projects, err := worktree.ScanAllProjects()
+	if err != nil || len(projects) == 0 {
+		m.err = fmt.Errorf("no projects found")
+		return m, nil
+	}
+
+	names := make([]string, len(projects))
+	for i, p := range projects {
+		names[i] = p.Name
+	}
+
+	var cmd tea.Cmd
+	m.picker, cmd = newPicker("Open project", "", names)
+	m.openStep = 1
+	return m, cmd
+}
+
+func (m Model) handleOpenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.Type == tea.KeyCtrlC {
+		return m, m.quitCmd
+	}
+
+	selected, cancelled, cmd := m.picker.update(msg)
+
+	if cancelled {
+		m.openStep = 0
+		return m, nil
+	}
+
+	if selected == "" {
+		return m, cmd
+	}
+
+	switch m.openStep {
+	case 1: // project selected
+		projects, _ := worktree.ScanAllProjects()
+		var proj worktree.Project
+		for _, p := range projects {
+			if p.Name == selected {
+				proj = p
+				break
+			}
+		}
+
+		if !proj.IsBare {
+			return m.openNonBareProject(proj)
+		}
+
+		// Bare repo: show remote branches that don't already have worktrees.
+		m.openProject = proj
+		wts, _ := worktree.ListWorktrees(proj.Path)
+		wtSet := make(map[string]bool, len(wts))
+		for _, wt := range wts {
+			wtSet[wt.Branch] = true
+		}
+		remote, _ := worktree.ListRemoteBranches(proj.Path)
+		var branches []string
+		for _, rb := range remote {
+			if !wtSet[rb] {
+				branches = append(branches, rb)
+			}
+		}
+
+		if len(branches) == 0 {
+			m.err = fmt.Errorf("no new branches available")
+			m.openStep = 0
+			return m, nil
+		}
+
+		var pickerCmd tea.Cmd
+		m.picker, pickerCmd = newPicker(
+			fmt.Sprintf("Branch for %s", proj.Name),
+			"no match = new branch",
+			branches,
+		)
+		m.openStep = 2
+		return m, pickerCmd
+
+	case 2: // branch selected for bare repo — create new worktree.
+		wtPath, err := worktree.CreateWorktree(m.openProject.Path, selected)
+		if err != nil {
+			m.err = err
+			m.openStep = 0
+			return m, nil
+		}
+
+		sessionName := worktree.SessionName(m.openProject.Name, selected)
+		if err := tmux.CreateWorktreeSession(sessionName, wtPath, m.openProject.Name, selected); err != nil {
+			m.err = err
+			m.openStep = 0
+			return m, nil
+		}
+
+		m.openStep = 0
+		attachCmd := tmux.AttachSessionCmd(sessionName)
+		if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
+			return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
+		}
+		return m, tea.ExecProcess(attachCmd, nil)
+	}
+
+	return m, nil
+}
+
+func (m Model) openNonBareProject(proj worktree.Project) (tea.Model, tea.Cmd) {
+	m.openStep = 0
+	name := worktree.SanitizeName(proj.Name)
+
+	if !tmux.HasSession(name) {
+		if err := tmux.CreateSession(name, proj.Path); err != nil {
+			m.err = err
+			return m, nil
+		}
+	}
+
+	cmd := tmux.AttachSessionCmd(name)
+	if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
+		return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
+	}
+	return m, tea.ExecProcess(cmd, nil)
+}
+
+func (m Model) openBareWorktree(proj worktree.Project, wt worktree.Worktree) (tea.Model, tea.Cmd) {
+	m.openStep = 0
+	name := worktree.SessionName(proj.Name, wt.Branch)
+
+	if !tmux.HasSession(name) {
+		if err := tmux.CreateWorktreeSession(name, wt.Path, proj.Name, wt.Branch); err != nil {
+			m.err = err
+			return m, nil
+		}
+	}
+
+	cmd := tmux.AttachSessionCmd(name)
+	if os.Getenv("TTYRANT_TMUX_CLIENT") != "" {
+		return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
+	}
+	return m, tea.ExecProcess(cmd, nil)
+}
+
 func (m Model) quitCmd() tea.Msg {
 	state.WriteCache(m.rows)
 	return tea.QuitMsg{}
@@ -251,6 +464,14 @@ func (m *Model) clampCursor() {
 func (m Model) View() string {
 	if m.width == 0 {
 		return ""
+	}
+
+	if m.openStep > 0 {
+		return m.picker.view(m.width, m.height)
+	}
+
+	if m.viewMode == viewWorktrees {
+		return m.viewWorktrees()
 	}
 
 	innerW := m.width - 2 // border left + right
@@ -339,6 +560,8 @@ func (m Model) renderHelp(width int) string {
 		{"1-9", "attach"},
 		{"a", "attach:1"},
 		{"A", "attach:2"},
+		{"o", "open"},
+		{"w", "worktrees"},
 		{"d", "kill"},
 	}
 

@@ -88,6 +88,45 @@ func InsideTmux() bool {
 	return os.Getenv("TMUX") != ""
 }
 
+// CreateWorktreeSession creates a new tmux session for a worktree, matching
+// the tmuxrun convention: window 1 = nvim, window 2 = terminal, with
+// @repo_name and @branch session variables.
+func CreateWorktreeSession(name, worktreePath, repoName, branch string) error {
+	if err := exec.Command("tmux", "new-session", "-d", "-s", name, "-c", worktreePath, "-n", "nvim").Run(); err != nil {
+		return fmt.Errorf("create session: %w", err)
+	}
+	_ = exec.Command("tmux", "send-keys", "-t", name+":1", "nvim", "Enter").Run()
+	_ = exec.Command("tmux", "new-window", "-t", name, "-c", worktreePath, "-n", "terminal").Run()
+	_ = exec.Command("tmux", "set-option", "-t", name, "@repo_name", repoName).Run()
+	_ = exec.Command("tmux", "set-option", "-t", name, "@branch", branch).Run()
+	_ = exec.Command("tmux", "select-window", "-t", name+":1").Run()
+	return nil
+}
+
+// HasSession checks whether a tmux session with the given name exists.
+func HasSession(name string) bool {
+	return exec.Command("tmux", "has-session", "-t", "="+name).Run() == nil
+}
+
+// CreateSession creates a new tmux session for a regular (non-worktree) project.
+// Window 1 = nvim, window 2 = terminal, with @repo_name and @branch set.
+func CreateSession(name, path string) error {
+	if err := exec.Command("tmux", "new-session", "-d", "-s", name, "-c", path, "-n", "nvim").Run(); err != nil {
+		return fmt.Errorf("create session: %w", err)
+	}
+	_ = exec.Command("tmux", "send-keys", "-t", name+":1", "nvim", "Enter").Run()
+	_ = exec.Command("tmux", "new-window", "-t", name, "-c", path, "-n", "terminal").Run()
+	_ = exec.Command("tmux", "set-option", "-t", name, "@repo_name", filepath.Base(path)).Run()
+	if out, err := exec.Command("git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
+		branch := strings.TrimSpace(string(out))
+		if branch != "" && branch != "HEAD" {
+			_ = exec.Command("tmux", "set-option", "-t", name, "@branch", branch).Run()
+		}
+	}
+	_ = exec.Command("tmux", "select-window", "-t", name+":1").Run()
+	return nil
+}
+
 // AttachSessionCmd returns the command to attach/switch to a tmux session
 // without targeting a specific window (resumes wherever it was left off).
 func AttachSessionCmd(name string) *exec.Cmd {

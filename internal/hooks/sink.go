@@ -90,8 +90,8 @@ func ProcessHookEvent(r io.Reader, pid int) error {
 		lastPromptAt = now
 	case payload.HookEventName == "ElicitationResult":
 		lastPromptAt = now
-	case payload.HookEventName == "PreToolUse" && existing != nil && existing.Status == model.StatusNeedsInput:
-		// PreToolUse after needs_input means user granted a permission.
+	case existing != nil && existing.Status == model.StatusNeedsInput:
+		// Any event after needs_input means the user responded (permission grant, elicitation answer, etc).
 		lastPromptAt = now
 	case existing != nil:
 		lastPromptAt = existing.LastPromptAt
@@ -115,7 +115,7 @@ func ProcessHookEvent(r io.Reader, pid int) error {
 	// but only if the user hasn't interacted recently.
 	if existing != nil && existing.Status == model.StatusWorking &&
 		(status == model.StatusDone || status == model.StatusNeedsInput) {
-		if lastPromptAt.IsZero() || now.Sub(lastPromptAt) >= soundCooldown {
+		if !lastPromptAt.IsZero() && now.Sub(lastPromptAt) >= soundCooldown {
 			audio.Play()
 		}
 	}

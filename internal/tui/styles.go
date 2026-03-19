@@ -127,4 +127,17 @@ var (
 
 	styleDialogHint = lipgloss.NewStyle().
 			Foreground(colorSubtle)
+
+	// Picker match highlight.
+	stylePickerMatch = lipgloss.NewStyle().
+				Foreground(colorGreen).
+				Bold(true)
+
+	// Picker dialog — wider than the small confirmation dialogs.
+	stylePickerDialog = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorPrimary).
+				Padding(1, 3).
+				Width(60).
+				Foreground(colorText)
 )

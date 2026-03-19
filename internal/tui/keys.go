@@ -12,6 +12,8 @@ const (
 	keyAttachTmux
 	keyAttachTmux2
 	keyKill
+	keyWorktree
+	keyOpen
 )
 
 func matchKey(msg tea.KeyMsg) keyAction {
@@ -32,6 +34,10 @@ func matchKey(msg tea.KeyMsg) keyAction {
 			return keyAttachTmux2
 		case "d":
 			return keyKill
+		case "w":
+			return keyWorktree
+		case "o":
+			return keyOpen
 		}
 	}
 	return keyNone
