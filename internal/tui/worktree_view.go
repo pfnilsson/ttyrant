@@ -99,7 +99,7 @@ func renderWtTable(rows []wtRow, cursor int, width int) string {
 		selected := i == cursor
 		line := formatWtRow(i, row, selected)
 		if lipgloss.Width(line) > width {
-			line = line[:width]
+			line = lipgloss.NewStyle().MaxWidth(width).Render(line)
 		}
 		if selected {
 			b.WriteString(styleSelected.Render(line))
