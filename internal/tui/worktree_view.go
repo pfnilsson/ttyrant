@@ -98,6 +98,9 @@ func renderWtTable(rows []wtRow, cursor int, width int) string {
 	for i, row := range rows {
 		selected := i == cursor
 		line := formatWtRow(i, row, selected)
+		if lipgloss.Width(line) > width {
+			line = line[:width]
+		}
 		if selected {
 			b.WriteString(styleSelected.Render(line))
 		} else if !row.hasSession {
