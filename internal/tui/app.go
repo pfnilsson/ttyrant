@@ -354,54 +354,40 @@ func (m Model) handleOpenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.openNonBareProject(proj)
 		}
 
-		// Bare repo: show remote branches that don't already have worktrees.
+		// Bare repo: show existing worktrees to open.
 		m.openProject = proj
 		wts, _ := worktree.ListWorktrees(proj.Path)
-		wtSet := make(map[string]bool, len(wts))
-		for _, wt := range wts {
-			wtSet[wt.Branch] = true
-		}
-		remote, _ := worktree.ListRemoteBranches(proj.Path)
-		var branches []string
-		for _, rb := range remote {
-			if !wtSet[rb] {
-				branches = append(branches, rb)
-			}
-		}
 
-		if len(branches) == 0 {
-			m.err = fmt.Errorf("no new branches available")
+		if len(wts) == 0 {
+			m.err = fmt.Errorf("no worktrees for %s", proj.Name)
 			m.openStep = 0
 			return m, nil
+		}
+
+		names := make([]string, len(wts))
+		for i, wt := range wts {
+			names[i] = wt.Branch
 		}
 
 		var pickerCmd tea.Cmd
 		m.picker, pickerCmd = newPicker(
-			fmt.Sprintf("Branch for %s", proj.Name),
-			"no match = new branch",
-			branches,
+			fmt.Sprintf("Worktree for %s", proj.Name),
+			"",
+			names,
 		)
 		m.openStep = 2
 		return m, pickerCmd
 
-	case 2: // branch selected for bare repo — create new worktree.
-		wtPath, err := worktree.CreateWorktree(m.openProject.Path, selected)
-		if err != nil {
-			m.err = err
-			m.openStep = 0
-			return m, nil
+	case 2: // worktree selected for bare repo — open it.
+		wts, _ := worktree.ListWorktrees(m.openProject.Path)
+		for _, wt := range wts {
+			if wt.Branch == selected {
+				return m.openBareWorktree(m.openProject, wt)
+			}
 		}
-
-		sessionName := worktree.SessionName(m.openProject.Name, selected)
-		if err := tmux.CreateWorktreeSession(sessionName, wtPath, m.openProject.Name, selected); err != nil {
-			m.err = err
-			m.openStep = 0
-			return m, nil
-		}
-
+		m.err = fmt.Errorf("worktree %q not found", selected)
 		m.openStep = 0
-		attachCmd := tmux.AttachSessionCmd(sessionName)
-		return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
+		return m, nil
 	}
 
 	return m, nil
