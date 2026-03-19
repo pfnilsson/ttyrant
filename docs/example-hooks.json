@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "PreToolUse": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "PostToolUse": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "PostToolUseFailure": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "PermissionRequest": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "Elicitation": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "ElicitationResult": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "TaskCompleted": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "ttyrant hook" }] }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+ 1234  1000 pts/0   Mon Mar 17 10:00:00 2025 node /home/user/.nvm/versions/node/v20.0.0/bin/node /home/user/.claude/local/node_modules/.bin/claude
+ 1235  1234 pts/0   Mon Mar 17 10:00:01 2025 node /home/user/.claude/local/node_modules/@anthropic-ai/claude-code/cli.js
+ 2000  1999 pts/1   Mon Mar 17 09:55:00 2025 vim /home/user/project/main.go
+ 2001  1999 pts/1   Mon Mar 17 09:55:01 2025 bash
+ 3000  2999 pts/2   Mon Mar 17 10:05:00 2025 node /usr/local/bin/claude
+ 4000  3999 pts/3   Mon Mar 17 10:10:00 2025 grep claude
+ 5000  4999 ?       Mon Mar 17 10:15:00 2025 node /home/user/.local/share/claude-code/node_modules/@anthropic-ai/claude-code/index.js
+ 6000  5999 pts/4   Mon Mar 17 10:20:00 2025 /usr/bin/ttyrant scan --json

@@ -1,0 +1,5 @@
+  PID  PPID TTY      STARTED                      COMMAND
+ 1234  1000 s000     Mon Mar 17 10:00:00 2025      node /Users/user/.claude/local/node_modules/.bin/claude
+ 1235  1234 s000     Mon Mar 17 10:00:01 2025      node /Users/user/.claude/local/node_modules/@anthropic-ai/claude-code/cli.js
+ 2000  1999 s001     Mon Mar 17 09:55:00 2025      vim /Users/user/project/main.go
+ 3000  2999 s002     Mon Mar 17 10:05:00 2025      node /usr/local/bin/claude

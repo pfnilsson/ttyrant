@@ -1,0 +1,7 @@
+{
+  "session_id": "test-session-001",
+  "cwd": "/home/user/my-project",
+  "hook_event_name": "SessionStart",
+  "permission_mode": "default",
+  "source": "startup"
+}

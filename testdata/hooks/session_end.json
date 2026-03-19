@@ -1,0 +1,8 @@
+{
+  "session_id": "test-session-001",
+  "cwd": "/home/user/my-project",
+  "hook_event_name": "SessionEnd",
+  "permission_mode": "default",
+  "reason": "prompt_input_exit",
+  "duration_seconds": 300
+}

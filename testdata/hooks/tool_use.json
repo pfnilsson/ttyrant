@@ -1,0 +1,10 @@
+{
+  "session_id": "test-session-001",
+  "cwd": "/home/user/my-project",
+  "hook_event_name": "PreToolUse",
+  "permission_mode": "default",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "go test ./..."
+  }
+}
