@@ -429,11 +429,12 @@ func (m Model) viewWorktrees() string {
 
 	if m.wtConfirmDelete && m.wtCursor < len(m.wtRows) {
 		row := m.wtRows[m.wtCursor]
+		maxDialogW := min(m.width-4, 60)
 		dialog := styleDialogTitle.Render("Delete worktree") + "\n\n" +
 			fmt.Sprintf("Remove worktree %s/%s?", row.repoName, row.branch) + "\n\n" +
 			styleDialogHint.Render("y") + " confirm  " +
 			styleDialogHint.Render("n") + " cancel"
-		popup := styleDialog.Render(dialog)
+		popup := styleDialog.Width(maxDialogW).Render(dialog)
 		frame = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup,
 			lipgloss.WithWhitespaceChars(" "),
 		)
