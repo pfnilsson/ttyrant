@@ -15,7 +15,8 @@ type picker struct {
 	title   string
 	hint    string
 	input   textinput.Model
-	items   []string
+	items   []string   // fuzzy match targets
+	labels  []string   // display labels (if nil, items are used)
 	matches []fuzzy.Match
 	cursor  int
 }
@@ -36,6 +37,23 @@ func newPicker(title, hint string, items []string) (picker, tea.Cmd) {
 	return p, cmd
 }
 
+func newPickerWithLabels(title, hint string, items, labels []string) (picker, tea.Cmd) {
+	ti := textinput.New()
+	ti.Prompt = "> "
+	ti.CharLimit = 100
+	cmd := ti.Focus()
+
+	p := picker{
+		title:  title,
+		hint:   hint,
+		input:  ti,
+		items:  items,
+		labels: labels,
+	}
+	p.refilter()
+	return p, cmd
+}
+
 func (p *picker) refilter() {
 	query := p.input.Value()
 	if query == "" {
@@ -49,6 +67,13 @@ func (p *picker) refilter() {
 	if p.cursor >= len(p.matches) {
 		p.cursor = max(len(p.matches)-1, 0)
 	}
+}
+
+func (p *picker) label(m fuzzy.Match) string {
+	if p.labels != nil && m.Index < len(p.labels) {
+		return p.labels[m.Index]
+	}
+	return m.Str
 }
 
 func (p *picker) selected() string {
@@ -116,7 +141,14 @@ func (p picker) view(width, height int) string {
 		if i == p.cursor {
 			prefix = styleDot.Foreground(colorPrimary).Render("▶ ")
 		}
-		b.WriteString(prefix + highlightMatch(m) + "\n")
+		display := p.label(m)
+		sel := i == p.cursor
+		if p.labels != nil {
+			display = highlightMatchInLabel(display, m.Str, m, sel)
+		} else {
+			display = highlightMatch(m, sel)
+		}
+		b.WriteString(prefix + display + "\n")
 	}
 
 	// Pad remaining rows to keep window static.
@@ -137,9 +169,52 @@ func (p picker) view(width, height int) string {
 	)
 }
 
-// highlightMatch renders a fuzzy match with matched characters highlighted.
-func highlightMatch(m fuzzy.Match) string {
+// highlightMatchInLabel highlights matched characters within the name portion
+// of a label (e.g. path). MatchedIndexes refer to the name, so we offset them
+// to where the name appears in the label.
+func highlightMatchInLabel(label, name string, m fuzzy.Match, selected bool) string {
+	selStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+
 	if len(m.MatchedIndexes) == 0 {
+		if selected {
+			return selStyle.Render(label)
+		}
+		return label
+	}
+
+	offset := strings.LastIndex(label, name)
+	if offset < 0 {
+		if selected {
+			return selStyle.Render(label)
+		}
+		return label
+	}
+
+	matched := make(map[int]bool, len(m.MatchedIndexes))
+	for _, idx := range m.MatchedIndexes {
+		matched[idx+offset] = true
+	}
+
+	var b strings.Builder
+	for i, ch := range label {
+		if matched[i] {
+			b.WriteString(stylePickerMatch.Render(string(ch)))
+		} else if selected {
+			b.WriteString(selStyle.Render(string(ch)))
+		} else {
+			b.WriteRune(ch)
+		}
+	}
+	return b.String()
+}
+
+func highlightMatch(m fuzzy.Match, selected bool) string {
+	selStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+
+	if len(m.MatchedIndexes) == 0 {
+		if selected {
+			return selStyle.Render(m.Str)
+		}
 		return m.Str
 	}
 
@@ -152,6 +227,8 @@ func highlightMatch(m fuzzy.Match) string {
 	for i, ch := range m.Str {
 		if matched[i] {
 			b.WriteString(stylePickerMatch.Render(string(ch)))
+		} else if selected {
+			b.WriteString(selStyle.Render(string(ch)))
 		} else {
 			b.WriteRune(ch)
 		}

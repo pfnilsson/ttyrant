@@ -314,12 +314,14 @@ func (m Model) startOpen() (tea.Model, tea.Cmd) {
 	}
 
 	names := make([]string, len(projects))
+	paths := make([]string, len(projects))
 	for i, p := range projects {
 		names[i] = p.Name
+		paths[i] = p.Path
 	}
 
 	var cmd tea.Cmd
-	m.picker, cmd = newPicker("Open project", "", names)
+	m.picker, cmd = newPickerWithLabels("Open project", "", names, paths)
 	m.openStep = 1
 	return m, cmd
 }
