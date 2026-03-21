@@ -17,7 +17,7 @@ import (
 	"github.com/pfnilsson/ttyrant/internal/worktree"
 )
 
-const refreshInterval = 2 * time.Second
+const refreshInterval = 1 * time.Second
 
 type viewMode int
 
@@ -537,6 +537,7 @@ func (m Model) View() string {
 
 	return frame
 }
+
 
 func (m Model) renderHelp(width int) string {
 	type binding struct {
