@@ -9,6 +9,7 @@ A terminal dashboard for managing tmux sessions and git worktrees, with live Cla
 - Git worktree management: create, delete, and navigate worktrees for bare repos
 - Clone bare repositories by URL
 - Open projects from `~/Projects` or `~/.config` with branch picker
+- Scratch terminals: quick disposable tmux sessions in home directory
 - Attach to tmux session windows (nvim / terminal)
 - Kill tmux sessions and delete worktrees with confirmation
 - Linux and macOS support
@@ -48,8 +49,10 @@ ttyrant
 | `a`    | Attach to window 1 (nvim)     |
 | `A`    | Attach to window 2 (terminal) |
 | `o`    | Open a project                |
+| `s`    | Open a scratch terminal       |
 | `w`    | Switch to Worktrees view      |
 | `d`    | Kill session (confirms)       |
+| `?`    | Help                          |
 | `q`    | Quit                          |
 
 ### Worktrees View
@@ -61,10 +64,11 @@ ttyrant
 | `a`    | Attach to window 1 (nvim)     |
 | `A`    | Attach to window 2 (terminal) |
 | `n`    | Create new worktree           |
-| `C`    | Clone a bare repo             |
+| `c`    | Clone a bare repo             |
 | `o`    | Open a project                |
 | `d`    | Delete worktree (confirms)    |
 | `w`    | Back to Sessions view         |
+| `?`    | Help                          |
 | `q`    | Quit                          |
 
 ### CLI Commands

@@ -44,13 +44,13 @@ Discovers Claude Code processes via `ps`. Platform-specific cwd resolution:
 Reads and writes per-directory JSON state files in `~/.local/state/ttyrant/current/`. Uses atomic writes (temp file + rename). State files are keyed by a SHA256 hash of the normalized directory path.
 
 ### `internal/tmux`
-Lists tmux sessions, finds sessions by directory, generates attach/switch commands.
+Lists tmux sessions, finds sessions by directory, generates attach/switch commands. Supports creating project sessions (nvim + terminal), worktree sessions, and scratch sessions (single terminal in home directory).
 
 ### `internal/merge`
 Combines tmux sessions (primary rows), Claude processes, and hook state into `SessionRow` entries. Tmux sessions are always shown. Claude data enriches matching sessions by directory (exact match or child path).
 
 ### `internal/tui`
-Bubble Tea model with 2-second refresh loop and two views:
+Bubble Tea model with 1-second refresh loop and two views:
 - **Sessions view** — tmux sessions with Claude status, directory, last event, and idle time
 - **Worktrees view** — git worktrees grouped by bare repo, with branch, head commit, and session status
 
