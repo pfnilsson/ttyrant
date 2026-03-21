@@ -49,9 +49,11 @@ type Model struct {
 
 	wtConfirmDelete bool
 	wtCloneActive   bool
-	wtNewStep       int // 0=none, 1=repo picker, 2=branch picker
+	wtNewStep       int // 0=none, 1=repo picker, 2=branch picker, 3=base branch picker
 	wtNewRepoName string
 	wtNewRepoPath string
+	wtNewBranch   string   // new branch name (set when entering step 3)
+	wtRemotes     []string // cached remote branches for current repo
 	picker        picker
 
 	openStep    int // 0=none, 1=project picker, 2=worktree picker (bare repo)

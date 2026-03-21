@@ -308,6 +308,7 @@ func (m Model) openBranchPicker() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	m.wtRemotes = branches
 	var cmd tea.Cmd
 	m.picker, cmd = newPicker(
 		fmt.Sprintf("Branch for %s", m.wtNewRepoName),
@@ -315,6 +316,17 @@ func (m Model) openBranchPicker() (tea.Model, tea.Cmd) {
 		branches,
 	)
 	m.wtNewStep = 2
+	return m, cmd
+}
+
+func (m Model) openBasePicker() (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	m.picker, cmd = newPicker(
+		fmt.Sprintf("Base branch for %s", m.wtNewBranch),
+		"",
+		m.wtRemotes,
+	)
+	m.wtNewStep = 3
 	return m, cmd
 }
 
@@ -326,6 +338,11 @@ func (m Model) handlePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	selected, cancelled, cmd := m.picker.update(msg)
 
 	if cancelled {
+		if m.wtNewStep == 3 {
+			// Go back to branch picker.
+			m.wtNewBranch = ""
+			return m.openBranchPicker()
+		}
 		m.wtNewStep = 0
 		return m, nil
 	}
@@ -348,38 +365,58 @@ func (m Model) handlePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openBranchPicker()
 
 	case 2: // branch selected
-		repoPath := m.wtNewRepoPath
-		repoName := m.wtNewRepoName
-		branch := selected
-		m.wtNewStep = 0
-
-		wtPath, gitCmd := worktree.CreateWorktreeCmd(repoPath, branch)
-		if gitCmd == nil {
-			// Worktree already exists, just create session and attach.
-			sessionName := worktree.SessionName(repoName, branch)
-			if err := tmux.CreateWorktreeSession(sessionName, wtPath, repoName, branch); err != nil {
-				m.err = err
-				m.showError = true
-				return m, nil
+		// Check if this is a new branch (not in remote list).
+		isNew := true
+		for _, r := range m.wtRemotes {
+			if r == selected {
+				isNew = false
+				break
 			}
-			attachCmd := tmux.AttachSessionCmd(sessionName)
-			return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
 		}
+		if isNew {
+			m.wtNewBranch = selected
+			return m.openBasePicker()
+		}
+		return m.createWorktree(selected, "")
 
-		return m, tea.ExecProcess(gitCmd, func(err error) tea.Msg {
-			if err != nil {
-				return wtCreateResultMsg{err: err}
-			}
-			sessionName := worktree.SessionName(repoName, branch)
-			if err := tmux.CreateWorktreeSession(sessionName, wtPath, repoName, branch); err != nil {
-				return wtCreateResultMsg{err: err}
-			}
-			return wtCreateResultMsg{sessionName: sessionName}
-		})
+	case 3: // base branch selected
+		branch := m.wtNewBranch
+		m.wtNewBranch = ""
+		return m.createWorktree(branch, selected)
 	}
 
 	m.wtNewStep = 0
 	return m, nil
+}
+
+func (m Model) createWorktree(branch, base string) (tea.Model, tea.Cmd) {
+	repoPath := m.wtNewRepoPath
+	repoName := m.wtNewRepoName
+	m.wtNewStep = 0
+
+	wtPath, gitCmd := worktree.CreateWorktreeCmd(repoPath, branch, base)
+	if gitCmd == nil {
+		// Worktree already exists, just create session and attach.
+		sessionName := worktree.SessionName(repoName, branch)
+		if err := tmux.CreateWorktreeSession(sessionName, wtPath, repoName, branch); err != nil {
+			m.err = err
+			m.showError = true
+			return m, nil
+		}
+		attachCmd := tmux.AttachSessionCmd(sessionName)
+		return m, tea.Sequence(tea.ExecProcess(attachCmd, nil), m.quitCmd)
+	}
+
+	return m, tea.ExecProcess(gitCmd, func(err error) tea.Msg {
+		if err != nil {
+			return wtCreateResultMsg{err: err}
+		}
+		sessionName := worktree.SessionName(repoName, branch)
+		if err := tmux.CreateWorktreeSession(sessionName, wtPath, repoName, branch); err != nil {
+			return wtCreateResultMsg{err: err}
+		}
+		return wtCreateResultMsg{sessionName: sessionName}
+	})
 }
 
 func (m Model) attachWorktreeWindow(window int) (tea.Model, tea.Cmd) {
@@ -424,7 +461,7 @@ func (m Model) viewWorktrees() string {
 	body.WriteString(content)
 	body.WriteString(helpBar)
 
-	frame := styleFrame.Width(innerW).Height(m.height - 2).Render(body.String())
+	frame := styleFrame.BorderForeground(colorGreen).Width(innerW).Height(m.height - 2).Render(body.String())
 
 	if m.showError && m.err != nil {
 		copyLabel := styleDialogHint.Render("y") + " yank"

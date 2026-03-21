@@ -204,18 +204,27 @@ func CreateWorktree(repoPath, branch string) (string, error) {
 
 // CreateWorktreeCmd returns the worktree path and an exec.Cmd that creates it
 // with output visible to the user. Returns ("", nil) if the worktree already exists.
-func CreateWorktreeCmd(repoPath, branch string) (string, *exec.Cmd) {
+// If base is non-empty, new branches are created from that base instead of HEAD.
+func CreateWorktreeCmd(repoPath, branch, base string) (string, *exec.Cmd) {
 	wtPath := filepath.Join(repoPath, branch)
 
 	if _, err := os.Stat(wtPath); err == nil {
 		return wtPath, nil
 	}
 
-	script := fmt.Sprintf(
-		`git -C %q worktree add %q %q 2>&1 || git -C %q worktree add -b %q %q 2>&1`,
-		repoPath, wtPath, branch,
-		repoPath, branch, wtPath,
-	)
+	var script string
+	if base != "" {
+		script = fmt.Sprintf(
+			`git -C %q worktree add -b %q %q %q 2>&1`,
+			repoPath, branch, wtPath, base,
+		)
+	} else {
+		script = fmt.Sprintf(
+			`git -C %q worktree add %q %q 2>&1 || git -C %q worktree add -b %q %q 2>&1`,
+			repoPath, wtPath, branch,
+			repoPath, branch, wtPath,
+		)
+	}
 	return wtPath, exec.Command("sh", "-c", script)
 }
 
