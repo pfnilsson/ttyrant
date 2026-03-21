@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -40,6 +41,7 @@ type Model struct {
 	hooksInstalled bool
 	scanner        *scanner.Scanner
 	err            error
+	showError      bool // awaiting keypress to dismiss error
 
 	viewMode viewMode
 	wtRows   []wtRow
@@ -54,6 +56,8 @@ type Model struct {
 
 	openStep    int // 0=none, 1=project picker, 2=worktree picker (bare repo)
 	openProject worktree.Project
+
+	copyFlash bool // briefly show "Copied!" after yank
 }
 
 // New creates the initial TUI model.
@@ -142,7 +146,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case installResultMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.setError(msg.err)
 		} else {
 			m.hooksInstalled = true
 		}
@@ -150,13 +154,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case wtCloneResultMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.setError(msg.err)
 		}
 		return m, wtRefreshCmd()
 
 	case wtCreateResultMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.setError(msg.err)
 			return m, nil
 		}
 		attachCmd := tmux.AttachSessionCmd(msg.sessionName)
@@ -164,16 +168,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case wtDeleteResultMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.setError(msg.err)
 		}
 		return m, wtRefreshCmd()
 
 	case wtRefreshMsg:
 		m.wtRows = msg.rows
 		if msg.err != nil {
-			m.err = msg.err
+			m.setError(msg.err)
 		}
 		m.clampWtCursor()
+		return m, nil
+
+	case clearCopyFlashMsg:
+		m.copyFlash = false
 		return m, nil
 
 	case tea.KeyMsg:
@@ -192,8 +200,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 type installResultMsg struct{ err error }
+type clearCopyFlashMsg struct{}
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.showError {
+		switch {
+		case msg.Type == tea.KeyEsc:
+			m.showError = false
+			m.err = nil
+		case msg.String() == "y" && m.err != nil:
+			copyToClipboard(m.err.Error())
+			m.copyFlash = true
+			return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return clearCopyFlashMsg{} })
+		}
+		return m, nil
+	}
+
 	if m.showHooksPrompt {
 		return m.handleHooksPrompt(msg)
 	}
@@ -320,7 +342,7 @@ func (m Model) attachTmux(window int) (tea.Model, tea.Cmd) {
 func (m Model) startOpen() (tea.Model, tea.Cmd) {
 	projects, err := worktree.ScanAllProjects()
 	if err != nil || len(projects) == 0 {
-		m.err = fmt.Errorf("no projects found")
+		m.setError(fmt.Errorf("no projects found"))
 		return m, nil
 	}
 
@@ -374,6 +396,7 @@ func (m Model) handleOpenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		if len(wts) == 0 {
 			m.err = fmt.Errorf("no worktrees for %s", proj.Name)
+			m.showError = true
 			m.openStep = 0
 			return m, nil
 		}
@@ -400,6 +423,7 @@ func (m Model) handleOpenKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.err = fmt.Errorf("worktree %q not found", selected)
+		m.showError = true
 		m.openStep = 0
 		return m, nil
 	}
@@ -414,6 +438,7 @@ func (m Model) openNonBareProject(proj worktree.Project) (tea.Model, tea.Cmd) {
 	if !tmux.HasSession(name) {
 		if err := tmux.CreateSession(name, proj.Path); err != nil {
 			m.err = err
+			m.showError = true
 			return m, nil
 		}
 	}
@@ -429,6 +454,7 @@ func (m Model) openBareWorktree(proj worktree.Project, wt worktree.Worktree) (te
 	if !tmux.HasSession(name) {
 		if err := tmux.CreateWorktreeSession(name, wt.Path, proj.Name, wt.Branch); err != nil {
 			m.err = err
+			m.showError = true
 			return m, nil
 		}
 	}
@@ -440,6 +466,32 @@ func (m Model) openBareWorktree(proj worktree.Project, wt worktree.Worktree) (te
 func (m Model) quitCmd() tea.Msg {
 	state.WriteCache(m.rows)
 	return tea.QuitMsg{}
+}
+
+func copyToClipboard(text string) {
+	// Try common clipboard tools in order of preference.
+	for _, name := range []string{"xclip", "xsel", "wl-copy", "pbcopy"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		var args []string
+		switch name {
+		case "xclip":
+			args = []string{"-selection", "clipboard"}
+		case "xsel":
+			args = []string{"--clipboard", "--input"}
+		}
+		cmd := exec.Command(path, args...)
+		cmd.Stdin = strings.NewReader(text)
+		_ = cmd.Run()
+		return
+	}
+}
+
+func (m *Model) setError(err error) {
+	m.err = err
+	m.showError = err != nil
 }
 
 func (m *Model) clampCursor() {
@@ -466,24 +518,9 @@ func (m Model) View() string {
 
 	innerW := m.width - 2 // border left + right
 
-	// === Status bar (errors) ===
-	var statusLines []string
-
-	if m.err != nil {
-		statusLines = append(statusLines,
-			styleUnknown.Render(fmt.Sprintf(" Error: %v", m.err)))
-	}
-	statusBar := strings.Join(statusLines, "\n")
-
 	// === Main content ===
-	// Calculate available height: help(1) - borders(2) - status lines - padding
-	usedLines := 1 // help bar
-	if len(statusLines) > 0 {
-		usedLines += len(statusLines)
-	}
-	contentH := max(
-		// 2 for frame border
-		m.height-usedLines-2, 3)
+	// Calculate available height: help(1) - borders(2)
+	contentH := max(m.height-1-2, 3)
 
 	var content string
 	header := renderTableHeader(innerW) + "\n"
@@ -504,10 +541,6 @@ func (m Model) View() string {
 
 	// === Assemble frame ===
 	var body strings.Builder
-	if statusBar != "" {
-		body.WriteString(statusBar)
-		body.WriteByte('\n')
-	}
 	body.WriteString(content)
 	body.WriteString(helpBar)
 
@@ -520,6 +553,19 @@ func (m Model) View() string {
 			styleDialogHint.Render("y") + " confirm  " +
 			styleDialogHint.Render("n") + " cancel"
 		popup := styleDialog.Render(dialog)
+		frame = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup,
+			lipgloss.WithWhitespaceChars(" "),
+		)
+	} else if m.showError && m.err != nil {
+		copyLabel := styleDialogHint.Render("y") + " yank"
+		if m.copyFlash {
+			copyLabel = styleDialogTitle.Render("Yanked!")
+		}
+		dialog := styleDialogTitle.Render("Error") + "\n\n" +
+			m.err.Error() + "\n\n" +
+			copyLabel + "  " +
+			styleDialogHint.Render("esc") + " dismiss"
+		popup := styleDialog.MaxWidth(m.width - 4).Render(dialog)
 		frame = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup,
 			lipgloss.WithWhitespaceChars(" "),
 		)

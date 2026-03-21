@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -177,7 +178,7 @@ func (m Model) handleWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.wtConfirmDelete = true
 		}
 		return m, nil
-	case "C":
+	case "c":
 		return m.startClone()
 	case "j":
 		if m.wtCursor < len(m.wtRows)-1 {
@@ -225,13 +226,23 @@ func (m Model) handleWtClone(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.wtCloneActive = false
-		gitCmd, err := worktree.CloneBareCmd(url, worktree.ProjectsDir())
+		gitCmd, errLogPath, err := worktree.CloneBareCmd(url, worktree.ProjectsDir())
 		if err != nil {
 			m.err = err
+			m.showError = true
 			return m, nil
 		}
 		return m, tea.ExecProcess(gitCmd, func(err error) tea.Msg {
-			return wtCloneResultMsg{err: err}
+			defer os.Remove(errLogPath)
+			if err != nil {
+				errOutput, _ := os.ReadFile(errLogPath)
+				detail := strings.TrimSpace(string(errOutput))
+				if detail != "" {
+					return wtCloneResultMsg{err: fmt.Errorf("%s", detail)}
+				}
+				return wtCloneResultMsg{err: err}
+			}
+			return wtCloneResultMsg{}
 		})
 	}
 
@@ -267,6 +278,7 @@ func (m Model) startNewWorktree() (tea.Model, tea.Cmd) {
 	repos, err := worktree.ScanRepos(worktree.ProjectsDir())
 	if err != nil || len(repos) == 0 {
 		m.err = fmt.Errorf("no bare repos found")
+		m.showError = true
 		return m, nil
 	}
 
@@ -291,6 +303,7 @@ func (m Model) openBranchPicker() (tea.Model, tea.Cmd) {
 	branches, err := worktree.ListRemoteBranches(m.wtNewRepoPath)
 	if err != nil {
 		m.err = err
+		m.showError = true
 		m.wtNewStep = 0
 		return m, nil
 	}
@@ -346,6 +359,7 @@ func (m Model) handlePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			sessionName := worktree.SessionName(repoName, branch)
 			if err := tmux.CreateWorktreeSession(sessionName, wtPath, repoName, branch); err != nil {
 				m.err = err
+				m.showError = true
 				return m, nil
 			}
 			attachCmd := tmux.AttachSessionCmd(sessionName)
@@ -374,6 +388,7 @@ func (m Model) attachWorktreeWindow(window int) (tea.Model, tea.Cmd) {
 	if !row.hasSession {
 		if err := tmux.CreateWorktreeSession(row.sessionName, row.worktreePath, row.repoName, row.branch); err != nil {
 			m.err = err
+			m.showError = true
 			return m, nil
 		}
 	}
@@ -388,19 +403,7 @@ func (m Model) viewWorktrees() string {
 	}
 
 	innerW := m.width - 2
-
-	var statusLines []string
-	if m.err != nil {
-		statusLines = append(statusLines,
-			styleUnknown.Render(fmt.Sprintf(" Error: %v", m.err)))
-	}
-	statusBar := strings.Join(statusLines, "\n")
-
-	usedLines := 1 // help bar
-	if len(statusLines) > 0 {
-		usedLines += len(statusLines)
-	}
-	contentH := max(m.height-usedLines-2, 3)
+	contentH := max(m.height-1-2, 3)
 
 	var content string
 	header := renderWtHeader(innerW) + "\n"
@@ -418,16 +421,25 @@ func (m Model) viewWorktrees() string {
 	helpBar := m.renderWtHelp(innerW)
 
 	var body strings.Builder
-	if statusBar != "" {
-		body.WriteString(statusBar)
-		body.WriteByte('\n')
-	}
 	body.WriteString(content)
 	body.WriteString(helpBar)
 
 	frame := styleFrame.Width(innerW).Height(m.height - 2).Render(body.String())
 
-	if m.wtConfirmDelete && m.wtCursor < len(m.wtRows) {
+	if m.showError && m.err != nil {
+		copyLabel := styleDialogHint.Render("y") + " yank"
+		if m.copyFlash {
+			copyLabel = styleDialogTitle.Render("Yanked!")
+		}
+		dialog := styleDialogTitle.Render("Error") + "\n\n" +
+			m.err.Error() + "\n\n" +
+			copyLabel + "  " +
+			styleDialogHint.Render("esc") + " dismiss"
+		popup := styleDialog.MaxWidth(m.width - 4).Render(dialog)
+		frame = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup,
+			lipgloss.WithWhitespaceChars(" "),
+		)
+	} else if m.wtConfirmDelete && m.wtCursor < len(m.wtRows) {
 		row := m.wtRows[m.wtCursor]
 		maxDialogW := min(m.width-4, 60)
 		dialog := styleDialogTitle.Render("Delete worktree") + "\n\n" +
@@ -459,7 +471,7 @@ func (m Model) renderWtHelp(width int) string {
 		{"w", "sessions"},
 		{"n", "new worktree"},
 		{"d", "delete"},
-		{"C", "clone"},
+		{"c", "clone"},
 	}
 
 	var parts []string

@@ -233,8 +233,9 @@ func RemoveWorktreeCmd(repoPath, worktreePath string) *exec.Cmd {
 }
 
 // CloneBareCmd returns an exec.Cmd that clones a bare repo with output visible,
-// and performs the remaining setup steps.
-func CloneBareCmd(url, projectsDir string) (*exec.Cmd, error) {
+// and performs the remaining setup steps. The second return value is a temp file
+// path where stderr is captured (for error reporting after the TUI resumes).
+func CloneBareCmd(url, projectsDir string) (*exec.Cmd, string, error) {
 	name := filepath.Base(url)
 	name = strings.TrimSuffix(name, ".git")
 
@@ -242,28 +243,46 @@ func CloneBareCmd(url, projectsDir string) (*exec.Cmd, error) {
 	barePath := filepath.Join(repoPath, ".bare")
 	gitFile := filepath.Join(repoPath, ".git")
 
+	if _, err := os.Stat(repoPath); err == nil {
+		return nil, "", fmt.Errorf("%s already exists", repoPath)
+	}
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {
-		return nil, fmt.Errorf("mkdir: %w", err)
+		return nil, "", fmt.Errorf("mkdir: %w", err)
 	}
 
+	errLog, err := os.CreateTemp("", "ttyrant-clone-*.log")
+	if err != nil {
+		return nil, "", fmt.Errorf("create temp file: %w", err)
+	}
+	errLogPath := errLog.Name()
+	errLog.Close()
+
 	script := fmt.Sprintf(`set -e
+exec 2> >(tee %q >&2)
 git clone --bare %q %q
 echo "gitdir: .bare" > %q
 git -C %q config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
 echo "Fetching branches..."
 git -C %q fetch origin
-MAIN=$(git -C %q symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || echo "main")
+git -C %q remote set-head origin --auto 2>/dev/null || true
+MAIN=$(git -C %q symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+if [ -z "$MAIN" ]; then
+  MAIN=$(git -C %q branch -r --format='%%(refname:short)' | sed 's|origin/||' | head -1)
+fi
 echo "Creating worktree $MAIN..."
 git -C %q worktree add %q/"$MAIN" "$MAIN"
 echo "Done."`,
+		errLogPath,
 		url, barePath,
 		gitFile,
 		repoPath,
 		repoPath,
 		repoPath,
+		repoPath,
+		repoPath,
 		repoPath, repoPath,
 	)
-	return exec.Command("sh", "-c", script), nil
+	return exec.Command("bash", "-c", script), errLogPath, nil
 }
 
 // CloneBare clones a repository as a bare repo set up for worktrees.
@@ -296,13 +315,27 @@ func CloneBare(url, projectsDir string) error {
 		return fmt.Errorf("git fetch: %w", err)
 	}
 
-	mainBranch := "main"
+	_ = exec.Command("git", "-C", repoPath, "remote", "set-head", "origin", "--auto").Run()
+
+	mainBranch := ""
 	if out, err := exec.Command("git", "-C", repoPath, "symbolic-ref", "refs/remotes/origin/HEAD").Output(); err == nil {
 		ref := strings.TrimSpace(string(out))
 		ref = strings.TrimPrefix(ref, "refs/remotes/origin/")
-		if ref != "" {
-			mainBranch = ref
+		mainBranch = ref
+	}
+	if mainBranch == "" {
+		if out, err := exec.Command("git", "-C", repoPath, "branch", "-r", "--format=%(refname:short)").Output(); err == nil {
+			for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+				b := strings.TrimPrefix(strings.TrimSpace(line), "origin/")
+				if b != "" && b != "HEAD" {
+					mainBranch = b
+					break
+				}
+			}
 		}
+	}
+	if mainBranch == "" {
+		mainBranch = "main"
 	}
 
 	wtPath := filepath.Join(repoPath, mainBranch)
