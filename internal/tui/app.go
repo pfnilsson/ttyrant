@@ -58,6 +58,7 @@ type Model struct {
 	openProject worktree.Project
 
 	copyFlash bool // briefly show "Copied!" after yank
+	showHelp  bool // help popup visible
 }
 
 // New creates the initial TUI model.
@@ -228,6 +229,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleWtConfirmDelete(msg)
 	}
 
+	if m.showHelp {
+		if msg.Type == tea.KeyEsc || msg.String() == "?" {
+			m.showHelp = false
+		}
+		return m, nil
+	}
+
 	if m.wtCloneActive {
 		return m.handleWtClone(msg)
 	}
@@ -238,6 +246,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if m.openStep > 0 {
 		return m.handleOpenKey(msg)
+	}
+
+	if msg.String() == "?" {
+		m.showHelp = true
+		return m, nil
 	}
 
 	if m.viewMode == viewWorktrees {
@@ -579,37 +592,80 @@ func (m Model) View() string {
 		frame = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup,
 			lipgloss.WithWhitespaceChars(" "),
 		)
+	} else if m.showHelp {
+		frame = renderHelpPopup(sessionBindings, m.width, m.height)
 	}
 
 	return frame
 }
 
 
+type binding struct {
+	key  string
+	desc string
+}
+
+var sessionBindings = []binding{
+	{"q", "quit"},
+	{"j/k", "navigate"},
+	{"1-9", "attach"},
+	{"a", "attach:1"},
+	{"A", "attach:2"},
+	{"o", "open"},
+	{"w", "worktrees"},
+	{"d", "kill"},
+}
+
 func (m Model) renderHelp(width int) string {
-	type binding struct {
-		key  string
-		desc string
+	return renderHelpBar(sessionBindings, width)
+}
+
+func renderHelpBar(bindings []binding, width int) string {
+	sep := styleHelp.Render("  ")
+	more := styleHelp.Render("  ") + styleHelpKey.Render("?") + " " + styleHelp.Render("help")
+	moreW := lipgloss.Width(more)
+
+	// Render all parts.
+	parts := make([]string, len(bindings))
+	for i, b := range bindings {
+		parts[i] = styleHelpKey.Render(b.key) + " " + styleHelp.Render(b.desc)
 	}
 
-	bindings := []binding{
-		{"q", "quit"},
-		{"j/k", "navigate"},
-		{"1-9", "attach"},
-		{"a", "attach:1"},
-		{"A", "attach:2"},
-		{"o", "open"},
-		{"w", "worktrees"},
-		{"d", "kill"},
+	line := strings.Join(parts, sep)
+	if lipgloss.Width(line) <= width {
+		pad := max(width-lipgloss.Width(line), 0)
+		return line + strings.Repeat(" ", pad)
 	}
 
-	var parts []string
-	for _, b := range bindings {
-		parts = append(parts, styleHelpKey.Render(b.key)+" "+styleHelp.Render(b.desc))
+	// Progressively drop from the right until it fits with the "? help" indicator.
+	for n := len(parts) - 1; n >= 1; n-- {
+		line = strings.Join(parts[:n], sep) + more
+		if lipgloss.Width(line) <= width {
+			pad := max(width-lipgloss.Width(line), 0)
+			return line + strings.Repeat(" ", pad)
+		}
 	}
-	line := strings.Join(parts, styleHelp.Render("  "))
 
-	pad := max(width-lipgloss.Width(line), 0)
-	return line + strings.Repeat(" ", pad)
+	// Absolute minimum: just the "? help" indicator.
+	pad := max(width-moreW, 0)
+	return more + strings.Repeat(" ", pad)
+}
+
+func renderHelpPopup(bindings []binding, width, height int) string {
+	var b strings.Builder
+	for _, bind := range bindings {
+		b.WriteString(styleHelpKey.Render(bind.key))
+		b.WriteString("  ")
+		b.WriteString(styleHelp.Render(bind.desc))
+		b.WriteByte('\n')
+	}
+	dialog := styleDialogTitle.Render("Keybindings") + "\n\n" +
+		b.String() + "\n" +
+		styleDialogHint.Render("esc") + " " + styleHelp.Render("dismiss")
+	popup := styleDialog.Render(dialog)
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, popup,
+		lipgloss.WithWhitespaceChars(" "),
+	)
 }
 
 func (m Model) renderEmpty(width, height int) string {

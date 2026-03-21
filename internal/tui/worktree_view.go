@@ -450,38 +450,28 @@ func (m Model) viewWorktrees() string {
 		frame = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup,
 			lipgloss.WithWhitespaceChars(" "),
 		)
+	} else if m.showHelp {
+		frame = renderHelpPopup(wtBindings, m.width, m.height)
 	}
 
 	return frame
 }
 
+var wtBindings = []binding{
+	{"q", "quit"},
+	{"j/k", "navigate"},
+	{"1-9", "attach"},
+	{"a", "attach:1"},
+	{"A", "attach:2"},
+	{"o", "open"},
+	{"w", "sessions"},
+	{"n", "new worktree"},
+	{"d", "delete"},
+	{"c", "clone"},
+}
+
 func (m Model) renderWtHelp(width int) string {
-	type binding struct {
-		key  string
-		desc string
-	}
-
-	bindings := []binding{
-		{"q", "quit"},
-		{"j/k", "navigate"},
-		{"1-9", "attach"},
-		{"a", "attach:1"},
-		{"A", "attach:2"},
-		{"o", "open"},
-		{"w", "sessions"},
-		{"n", "new worktree"},
-		{"d", "delete"},
-		{"c", "clone"},
-	}
-
-	var parts []string
-	for _, b := range bindings {
-		parts = append(parts, styleHelpKey.Render(b.key)+" "+styleHelp.Render(b.desc))
-	}
-	line := strings.Join(parts, styleHelp.Render("  "))
-
-	pad := max(width-lipgloss.Width(line), 0)
-	return line + strings.Repeat(" ", pad)
+	return renderHelpBar(wtBindings, width)
 }
 
 func (m Model) renderWtEmpty(width, height int) string {
