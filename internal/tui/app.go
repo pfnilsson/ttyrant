@@ -71,9 +71,8 @@ type tickMsg time.Time
 
 // refreshMsg carries fresh data after a scan.
 type refreshMsg struct {
-	rows           []model.SessionRow
-	hooksInstalled bool
-	err            error
+	rows []model.SessionRow
+	err  error
 }
 
 func tickCmd() tea.Cmd {
@@ -101,8 +100,7 @@ func refreshCmd(s *scanner.Scanner) tea.Cmd {
 
 		rows := merge.Merge(tmuxSessions, procs, hookStates, now)
 		return refreshMsg{
-			rows:           rows,
-			hooksInstalled: install.IsInstalled(),
+			rows: rows,
 		}
 	}
 }
@@ -126,13 +124,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case refreshMsg:
 		firstLoad := !m.loaded
-		if firstLoad && !msg.hooksInstalled {
-			m.showHooksPrompt = true
+		if firstLoad {
+			m.hooksInstalled = install.IsInstalled()
+			if !m.hooksInstalled {
+				m.showHooksPrompt = true
+			}
 		}
 		m.loaded = true
 		m.err = msg.err
 		m.rows = msg.rows
-		m.hooksInstalled = msg.hooksInstalled
 		sortRows(m.rows)
 		m.clampCursor()
 		if firstLoad && len(m.rows) == 0 && !m.showHooksPrompt {
