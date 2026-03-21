@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/pfnilsson/ttyrant/internal/doctor"
@@ -14,6 +15,13 @@ import (
 	"github.com/pfnilsson/ttyrant/internal/tui"
 )
 
+func getVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "dev"
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		runTUI()
@@ -21,6 +29,8 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "--version":
+		fmt.Println("ttyrant " + getVersion())
 	case "hook":
 		runHook()
 	case "scan":
@@ -39,6 +49,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  install-hooks     Install ttyrant hooks into Claude Code\n")
 		fmt.Fprintf(os.Stderr, "  uninstall-hooks   Remove ttyrant hooks from Claude Code\n")
 		fmt.Fprintf(os.Stderr, "  doctor            Run diagnostic checks\n")
+		fmt.Fprintf(os.Stderr, "  --version         Print version\n")
 		fmt.Fprintf(os.Stderr, "\nRun with no arguments to launch the TUI dashboard.\n")
 		os.Exit(1)
 	}
