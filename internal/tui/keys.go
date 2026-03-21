@@ -14,6 +14,7 @@ const (
 	keyKill
 	keyWorktree
 	keyOpen
+	keyScratch
 )
 
 func matchKey(msg tea.KeyMsg) keyAction {
@@ -38,6 +39,8 @@ func matchKey(msg tea.KeyMsg) keyAction {
 			return keyWorktree
 		case "o":
 			return keyOpen
+		case "s":
+			return keyScratch
 		}
 	}
 	return keyNone

@@ -296,6 +296,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, wtRefreshCmd()
 	case keyOpen:
 		return m.startOpen()
+	case keyScratch:
+		return m.openScratch()
 	}
 
 	return m, nil
@@ -478,6 +480,17 @@ func (m Model) openBareWorktree(proj worktree.Project, wt worktree.Worktree) (te
 	return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
 }
 
+func (m Model) openScratch() (tea.Model, tea.Cmd) {
+	name := tmux.NextScratchName()
+	if err := tmux.CreateScratchSession(name); err != nil {
+		m.err = err
+		m.showError = true
+		return m, nil
+	}
+	cmd := tmux.AttachSessionCmd(name)
+	return m, tea.Sequence(tea.ExecProcess(cmd, nil), m.quitCmd)
+}
+
 func (m Model) quitCmd() tea.Msg {
 	state.WriteCache(m.rows)
 	return tea.QuitMsg{}
@@ -614,6 +627,7 @@ var sessionBindings = []binding{
 	{"a", "attach:1"},
 	{"A", "attach:2"},
 	{"o", "open"},
+	{"s", "scratch"},
 	{"w", "worktrees"},
 	{"d", "kill"},
 }

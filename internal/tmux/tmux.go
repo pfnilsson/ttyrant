@@ -127,6 +127,34 @@ func CreateSession(name, path string) error {
 	return nil
 }
 
+// CreateScratchSession creates a minimal tmux session with a single terminal
+// window in the user's home directory. No nvim, no extra windows.
+func CreateScratchSession(name string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("home dir: %w", err)
+	}
+	if err := exec.Command("tmux", "new-session", "-d", "-s", name, "-c", home).Run(); err != nil {
+		return fmt.Errorf("create session: %w", err)
+	}
+	return nil
+}
+
+// NextScratchName returns the next available scratch session name.
+// It returns "scratch" if no scratch session exists, otherwise "scratch1", "scratch2", etc.
+func NextScratchName() string {
+	base := "scratch"
+	if !HasSession(base) {
+		return base
+	}
+	for i := 1; ; i++ {
+		name := fmt.Sprintf("%s%d", base, i)
+		if !HasSession(name) {
+			return name
+		}
+	}
+}
+
 // AttachSessionCmd returns the command to attach/switch to a tmux session
 // without targeting a specific window (resumes wherever it was left off).
 func AttachSessionCmd(name string) *exec.Cmd {
