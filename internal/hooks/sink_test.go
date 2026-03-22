@@ -137,8 +137,8 @@ func TestProcessHookEvent_TaskCompleted(t *testing.T) {
 	}
 
 	s, _ := state.ReadStateFile("/home/user/project")
-	if s.Status != model.StatusDone {
-		t.Errorf("Status = %q, want done", s.Status)
+	if s.Status != model.StatusWorking {
+		t.Errorf("Status = %q, want working", s.Status)
 	}
 }
 
@@ -267,26 +267,42 @@ func TestProcessHookEvent_SequenceProgression(t *testing.T) {
 	}
 }
 
+func TestProcessHookEvent_StopWritesWorking(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", tmp)
+
+	// Stop should write WORKING (not DONE) — the debounced _notify
+	// process promotes to DONE after confirming no follow-up tool use.
+	p := `{"session_id":"s1","cwd":"/project","hook_event_name":"Stop"}`
+	if err := ProcessHookEvent(strings.NewReader(p), 1234); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := state.ReadStateFile("/project")
+	if s.Status != model.StatusWorking {
+		t.Errorf("Status = %q, want working", s.Status)
+	}
+	if s.Event != "Stop" {
+		t.Errorf("Event = %q, want Stop", s.Event)
+	}
+}
+
 func TestProcessHookEvent_IdleNotificationAfterDone(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", tmp)
 
-	// Task completes → status is done.
-	p1 := `{"session_id":"s1","cwd":"/project","hook_event_name":"TaskCompleted"}`
-	if err := ProcessHookEvent(strings.NewReader(p1), 1234); err != nil {
+	// Pre-populate DONE state (as _notify would set it).
+	_ = state.WriteState(&model.HookState{
+		Cwd:      "/project",
+		Status:   model.StatusDone,
+		Sequence: 1,
+	})
+
+	// Idle notification arrives — should NOT override done.
+	p := `{"session_id":"s1","cwd":"/project","hook_event_name":"Notification","notification_type":"idle_prompt"}`
+	if err := ProcessHookEvent(strings.NewReader(p), 1234); err != nil {
 		t.Fatal(err)
 	}
 	s, _ := state.ReadStateFile("/project")
-	if s.Status != model.StatusDone {
-		t.Fatalf("Status = %q, want done", s.Status)
-	}
-
-	// Idle notification arrives — should NOT override done.
-	p2 := `{"session_id":"s1","cwd":"/project","hook_event_name":"Notification","notification_type":"idle_prompt"}`
-	if err := ProcessHookEvent(strings.NewReader(p2), 1234); err != nil {
-		t.Fatal(err)
-	}
-	s, _ = state.ReadStateFile("/project")
 	if s.Status != model.StatusDone {
 		t.Errorf("Status = %q, want done (idle_prompt should not override)", s.Status)
 	}
@@ -296,15 +312,16 @@ func TestProcessHookEvent_NewPromptAfterDone(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", tmp)
 
-	// Task completes.
-	p1 := `{"session_id":"s1","cwd":"/project","hook_event_name":"TaskCompleted"}`
-	if err := ProcessHookEvent(strings.NewReader(p1), 1234); err != nil {
-		t.Fatal(err)
-	}
+	// Pre-populate DONE state (as _notify would set it).
+	_ = state.WriteState(&model.HookState{
+		Cwd:      "/project",
+		Status:   model.StatusDone,
+		Sequence: 1,
+	})
 
 	// User submits a new prompt — should override done.
-	p2 := `{"session_id":"s1","cwd":"/project","hook_event_name":"UserPromptSubmit"}`
-	if err := ProcessHookEvent(strings.NewReader(p2), 1234); err != nil {
+	p := `{"session_id":"s1","cwd":"/project","hook_event_name":"UserPromptSubmit"}`
+	if err := ProcessHookEvent(strings.NewReader(p), 1234); err != nil {
 		t.Fatal(err)
 	}
 	s, _ := state.ReadStateFile("/project")
@@ -321,7 +338,7 @@ func TestProcessHookEvent_FixtureFiles(t *testing.T) {
 		{"../../testdata/hooks/session_start.json", model.StatusStarting},
 		{"../../testdata/hooks/tool_use.json", model.StatusWorking},
 		{"../../testdata/hooks/permission_request.json", model.StatusNeedsInput},
-		{"../../testdata/hooks/task_completed.json", model.StatusDone},
+		{"../../testdata/hooks/task_completed.json", model.StatusWorking},
 		{"../../testdata/hooks/session_end.json", model.StatusExited},
 	}
 

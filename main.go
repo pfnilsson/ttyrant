@@ -42,6 +42,8 @@ func main() {
 		runUninstallHooks()
 	case "doctor":
 		runDoctor()
+	case "_notify":
+		runNotify()
 	default:
 		fmt.Fprintf(os.Stderr, "Usage: ttyrant [command]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
@@ -134,6 +136,19 @@ func runHook() {
 		fmt.Fprintf(os.Stderr, "ttyrant hook: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runNotify() {
+	// Internal subcommand: ttyrant _notify <cwd> <sequence>
+	// Waits briefly, then plays sound if the state still matches.
+	if len(os.Args) < 4 {
+		os.Exit(1)
+	}
+	cwd := os.Args[2]
+	seq := int64(0)
+	fmt.Sscanf(os.Args[3], "%d", &seq)
+
+	hooks.RunNotify(cwd, seq)
 }
 
 func runDoctor() {

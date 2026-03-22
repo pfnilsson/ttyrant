@@ -51,6 +51,21 @@ func Play() {
 	}()
 }
 
+// PlaySync plays the embedded kaching sound and blocks until it finishes.
+// Use in short-lived processes where Play()'s goroutine would be killed
+// before the player starts (e.g. the _notify subprocess).
+func PlaySync() {
+	setupOnce.Do(setup)
+	if playerCmd == "" {
+		return
+	}
+
+	cmd := exec.Command(playerCmd, tmpFile)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	_ = cmd.Run()
+}
+
 // Cleanup removes the temporary audio file. Call on application exit.
 func Cleanup() {
 	if tmpFile != "" {

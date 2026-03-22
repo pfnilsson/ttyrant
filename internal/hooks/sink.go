@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -83,18 +84,37 @@ func ProcessHookEvent(r io.Reader, pid int) error {
 		}
 	}
 
-	// Track when the user last interacted (prompt, permission grant, elicitation reply).
+	// Track when the user last submitted a prompt. This is used for the
+	// sound cooldown — we only suppress sound if the user JUST sent a new
+	// prompt (meaning they're actively watching). Permission grants and
+	// elicitation replies are quick interactions that don't indicate the
+	// user is watching, so they don't reset the cooldown.
 	var lastPromptAt time.Time
 	switch {
 	case payload.HookEventName == "UserPromptSubmit":
 		lastPromptAt = now
-	case payload.HookEventName == "ElicitationResult":
-		lastPromptAt = now
-	case existing != nil && existing.Status == model.StatusNeedsInput:
-		// Any event after needs_input means the user responded (permission grant, elicitation answer, etc).
-		lastPromptAt = now
 	case existing != nil:
 		lastPromptAt = existing.LastPromptAt
+	}
+
+	// Sound: needs_input is always genuine (permission/elicitation) — play
+	// immediately. Stop→done is debounced because Stop sometimes fires
+	// mid-task and gets overridden by PreToolUse within ~250ms.
+	if existing != nil && existing.Status == model.StatusWorking &&
+		!lastPromptAt.IsZero() && now.Sub(lastPromptAt) >= soundCooldown {
+		if status == model.StatusNeedsInput {
+			audio.Play()
+		} else if status == model.StatusDone {
+			scheduleDebouncedSound(payload.Cwd, seq)
+		}
+	}
+
+	// Don't write DONE for Stop immediately — the debounced _notify
+	// process will promote to DONE after confirming no follow-up tool use.
+	// This prevents the TUI from briefly flashing DONE on mid-task Stops.
+	writeStatus := status
+	if payload.HookEventName == "Stop" {
+		writeStatus = model.StatusWorking
 	}
 
 	hookState := &model.HookState{
@@ -102,22 +122,13 @@ func ProcessHookEvent(r io.Reader, pid int) error {
 		PID:           pid,
 		SessionID:     payload.SessionID,
 		Event:         payload.HookEventName,
-		Status:        status,
+		Status:        writeStatus,
 		LastEventAt:   now,
 		WaitingReason: waitingReason,
 		ToolName:      payload.ToolName,
 		Sequence:      seq,
 		LastPromptAt:  lastPromptAt,
 		UpdatedBy:     "ttyrant hook",
-	}
-
-	// Play notification sound on working → done/needs_input transitions,
-	// but only if the user hasn't interacted recently.
-	if existing != nil && existing.Status == model.StatusWorking &&
-		(status == model.StatusDone || status == model.StatusNeedsInput) {
-		if !lastPromptAt.IsZero() && now.Sub(lastPromptAt) >= soundCooldown {
-			audio.Play()
-		}
 	}
 
 	if err := state.WriteState(hookState); err != nil {
@@ -170,7 +181,49 @@ func appendEventLog(t time.Time, payload HookPayload) error {
 	return err
 }
 
+
 const soundCooldown = 15 * time.Second
+const soundDebounce = 500 * time.Millisecond
+
+// scheduleDebouncedSound spawns a detached ttyrant process that waits briefly,
+// then plays sound only if the state hasn't been overridden by a newer event.
+func scheduleDebouncedSound(cwd string, seq int64) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(exe, "_notify", cwd, fmt.Sprintf("%d", seq))
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	// Detach from parent so the hook process can exit immediately.
+	cmd.SysProcAttr = nil
+	_ = cmd.Start()
+	if cmd.Process != nil {
+		_ = cmd.Process.Release()
+	}
+}
+
+// RunNotify is the implementation of the _notify subcommand.
+// It waits briefly, then checks if the Stop was real (no newer events).
+// If so, it promotes the status to DONE and plays sound.
+func RunNotify(cwd string, expectedSeq int64) {
+	time.Sleep(soundDebounce)
+
+	s, err := state.ReadStateFile(cwd)
+	if err != nil || s == nil {
+		return
+	}
+	if s.Sequence != expectedSeq {
+		// A newer event arrived — the Stop was mid-task.
+		return
+	}
+	// Sequence matches — the Stop was real. Promote to DONE.
+	s.Status = model.StatusDone
+	s.Sequence = time.Now().UnixMicro()
+	_ = state.WriteState(s)
+	audio.PlaySync()
+}
 
 // GetPIDFromEnv tries to get the Claude Code PID from environment variables.
 // Falls back to PPID (the hook is invoked as a child of Claude).

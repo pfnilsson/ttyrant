@@ -26,7 +26,7 @@ func MapEventToStatus(event string) model.SessionStatus {
 	case "Elicitation":
 		return model.StatusNeedsInput
 	case "TaskCompleted":
-		return model.StatusDone
+		return model.StatusWorking
 	case "Stop":
 		return model.StatusDone
 	case "SessionEnd":

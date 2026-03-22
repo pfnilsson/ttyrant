@@ -21,7 +21,7 @@ func TestMapEventToStatus(t *testing.T) {
 		{"ElicitationResult", model.StatusWorking},
 		{"PermissionRequest", model.StatusNeedsInput},
 		{"Elicitation", model.StatusNeedsInput},
-		{"TaskCompleted", model.StatusDone},
+		{"TaskCompleted", model.StatusWorking},
 		{"Stop", model.StatusDone},
 		{"SessionEnd", model.StatusExited},
 		{"SomethingUnknown", model.StatusUnknown},

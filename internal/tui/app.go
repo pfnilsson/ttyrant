@@ -143,6 +143,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rows = msg.rows
 		sortRows(m.rows)
 		m.clampCursor()
+
 		if firstLoad && len(m.rows) == 0 && !m.showHooksPrompt {
 			return m.startOpen()
 		}
