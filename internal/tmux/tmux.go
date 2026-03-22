@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/pfnilsson/ttyrant/internal/util"
 )
 
 // Session represents a tmux session.
@@ -130,11 +132,7 @@ func CreateSession(name, path string) error {
 // CreateScratchSession creates a minimal tmux session with a single terminal
 // window in the user's home directory. No nvim, no extra windows.
 func CreateScratchSession(name string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("home dir: %w", err)
-	}
-	if err := exec.Command("tmux", "new-session", "-d", "-s", name, "-c", home).Run(); err != nil {
+	if err := exec.Command("tmux", "new-session", "-d", "-s", name, "-c", util.HomeDir).Run(); err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
 	return nil

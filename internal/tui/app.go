@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -492,7 +493,9 @@ func (m Model) openScratch() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) quitCmd() tea.Msg {
-	state.WriteCache(m.rows)
+	if err := state.WriteCache(m.rows); err != nil {
+		fmt.Fprintf(os.Stderr, "ttyrant: warning: cache write failed: %v\n", err)
+	}
 	return tea.QuitMsg{}
 }
 

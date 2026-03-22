@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/pfnilsson/ttyrant/internal/audio"
 	"github.com/pfnilsson/ttyrant/internal/doctor"
 	"github.com/pfnilsson/ttyrant/internal/hooks"
 	"github.com/pfnilsson/ttyrant/internal/install"
@@ -56,6 +57,7 @@ func main() {
 }
 
 func runTUI() {
+	defer audio.Cleanup()
 	m := tui.New()
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

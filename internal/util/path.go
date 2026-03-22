@@ -37,6 +37,16 @@ func NormalizePath(p string) string {
 	return resolved
 }
 
+// HomeDir returns the user's home directory, resolved once at init time.
+// Panics if the home directory cannot be determined, since the app is unusable without it.
+var HomeDir = func() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic(fmt.Sprintf("ttyrant: cannot determine home directory: %v", err))
+	}
+	return home
+}()
+
 // DirHash returns a truncated SHA256 hex string for a normalized directory path.
 // Used as the filename for per-directory state files.
 func DirHash(dir string) string {

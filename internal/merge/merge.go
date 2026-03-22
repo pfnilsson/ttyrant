@@ -69,16 +69,21 @@ func matchClaude(sessPath string, procByCwd map[string]*model.LiveProcess, hookB
 	}
 
 	// Try child directories (Claude cwd is under the tmux session path).
+	// If multiple match, pick the deepest (longest path).
 	var bestProc *model.LiveProcess
-	var bestHook *model.HookState
+	var bestProcCwd string
 	for cwd, p := range procByCwd {
-		if strings.HasPrefix(cwd, sessPath+"/") {
+		if strings.HasPrefix(cwd, sessPath+"/") && len(cwd) > len(bestProcCwd) {
 			bestProc = p
+			bestProcCwd = cwd
 		}
 	}
+	var bestHook *model.HookState
+	var bestHookCwd string
 	for cwd, h := range hookByCwd {
-		if strings.HasPrefix(cwd, sessPath+"/") {
+		if strings.HasPrefix(cwd, sessPath+"/") && len(cwd) > len(bestHookCwd) {
 			bestHook = h
+			bestHookCwd = cwd
 		}
 	}
 	return bestProc, bestHook
@@ -109,11 +114,9 @@ func buildRow(sess tmux.Session, proc *model.LiveProcess, hook *model.HookState,
 
 	row.HasClaude = true
 
-	if alive {
-		row.PID = proc.PID
-		row.Cmdline = proc.Cmdline
-		row.StartedAt = proc.StartTime
-	}
+	row.PID = proc.PID
+	row.Cmdline = proc.Cmdline
+	row.StartedAt = proc.StartTime
 
 	if hook != nil {
 		row.LastEvent = hook.Event

@@ -10,10 +10,9 @@ import (
 // Expected format: PID PPID TTY LSTART COMMAND
 // LSTART is a multi-word timestamp like "Mon Jan  2 15:04:05 2006".
 func parseProcessList(output string) []processEntry {
-	lines := strings.Split(output, "\n")
 	var entries []processEntry
 
-	for _, line := range lines {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

@@ -21,8 +21,7 @@ const (
 func StateDir() string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
-		home, _ := os.UserHomeDir()
-		base = filepath.Join(home, ".local", "state")
+		base = filepath.Join(util.HomeDir, ".local", "state")
 	}
 	return filepath.Join(base, stateDirName)
 }

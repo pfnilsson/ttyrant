@@ -2,6 +2,7 @@ package audio
 
 import (
 	_ "embed"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +30,10 @@ func setup() {
 	}
 
 	tmpFile = filepath.Join(os.TempDir(), "ttyrant-kaching.wav")
-	_ = os.WriteFile(tmpFile, kachingWav, 0644)
+	if err := os.WriteFile(tmpFile, kachingWav, 0o600); err != nil {
+		fmt.Fprintf(os.Stderr, "ttyrant: warning: could not write audio file: %v\n", err)
+		playerCmd = "" // disable audio
+	}
 }
 
 // Play plays the embedded kaching sound asynchronously.
@@ -45,4 +49,11 @@ func Play() {
 		cmd.Stderr = nil
 		_ = cmd.Run()
 	}()
+}
+
+// Cleanup removes the temporary audio file. Call on application exit.
+func Cleanup() {
+	if tmpFile != "" {
+		os.Remove(tmpFile)
+	}
 }

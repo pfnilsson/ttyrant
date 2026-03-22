@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/pfnilsson/ttyrant/internal/util"
 )
 
 // hookEvents lists all Claude Code hook events ttyrant monitors.
@@ -26,8 +28,12 @@ var hookEvents = []string{
 }
 
 // settingsPath returns the path to the Claude Code user settings file.
-func settingsPath() string {
-	home, _ := os.UserHomeDir()
+// It's a var so tests can override it.
+var settingsPath = func() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(util.HomeDir, ".claude", "settings.json")
+	}
 	return filepath.Join(home, ".claude", "settings.json")
 }
 

@@ -27,7 +27,7 @@ func WriteCache(rows []model.SessionRow) error {
 		return err
 	}
 
-	return os.WriteFile(CachePath(), data, 0o644)
+	return os.WriteFile(CachePath(), data, 0o600)
 }
 
 // ReadCache loads cached session rows and recomputes IdleFor.

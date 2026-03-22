@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/pfnilsson/ttyrant/internal/util"
 )
 
 // BareRepo represents a bare git repository set up for worktrees.
@@ -33,14 +35,12 @@ type Worktree struct {
 
 // ProjectsDir returns the fixed projects directory.
 func ProjectsDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Projects")
+	return filepath.Join(util.HomeDir, "Projects")
 }
 
 // ConfigDir returns the user config directory.
 func ConfigDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config")
+	return filepath.Join(util.HomeDir, ".config")
 }
 
 // ScanAllProjects finds all project directories under ~/Projects and ~/.config.
@@ -215,14 +215,14 @@ func CreateWorktreeCmd(repoPath, branch, base string) (string, *exec.Cmd) {
 	var script string
 	if base != "" {
 		script = fmt.Sprintf(
-			`git -C %q worktree add -b %q %q %q 2>&1`,
-			repoPath, branch, wtPath, base,
+			`git -C %s worktree add -b %s %s %s 2>&1`,
+			shellQuote(repoPath), shellQuote(branch), shellQuote(wtPath), shellQuote(base),
 		)
 	} else {
 		script = fmt.Sprintf(
-			`git -C %q worktree add %q %q 2>&1 || git -C %q worktree add -b %q %q 2>&1`,
-			repoPath, wtPath, branch,
-			repoPath, branch, wtPath,
+			`git -C %s worktree add %s %s 2>&1 || git -C %s worktree add -b %s %s 2>&1`,
+			shellQuote(repoPath), shellQuote(wtPath), shellQuote(branch),
+			shellQuote(repoPath), shellQuote(branch), shellQuote(wtPath),
 		)
 	}
 	return wtPath, exec.Command("sh", "-c", script)
@@ -267,29 +267,29 @@ func CloneBareCmd(url, projectsDir string) (*exec.Cmd, string, error) {
 	errLog.Close()
 
 	script := fmt.Sprintf(`set -e
-exec 2> >(tee %q >&2)
-git clone --bare %q %q
-echo "gitdir: .bare" > %q
-git -C %q config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+exec 2> >(tee %s >&2)
+git clone --bare %s %s
+echo "gitdir: .bare" > %s
+git -C %s config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
 echo "Fetching branches..."
-git -C %q fetch origin
-git -C %q remote set-head origin --auto 2>/dev/null || true
-MAIN=$(git -C %q symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+git -C %s fetch origin
+git -C %s remote set-head origin --auto 2>/dev/null || true
+MAIN=$(git -C %s symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
 if [ -z "$MAIN" ]; then
-  MAIN=$(git -C %q branch -r --format='%%(refname:short)' | sed 's|origin/||' | head -1)
+  MAIN=$(git -C %s branch -r --format='%%(refname:short)' | sed 's|origin/||' | head -1)
 fi
 echo "Creating worktree $MAIN..."
-git -C %q worktree add %q/"$MAIN" "$MAIN"
+git -C %s worktree add %s/"$MAIN" "$MAIN"
 echo "Done."`,
-		errLogPath,
-		url, barePath,
-		gitFile,
-		repoPath,
-		repoPath,
-		repoPath,
-		repoPath,
-		repoPath,
-		repoPath, repoPath,
+		shellQuote(errLogPath),
+		shellQuote(url), shellQuote(barePath),
+		shellQuote(gitFile),
+		shellQuote(repoPath),
+		shellQuote(repoPath),
+		shellQuote(repoPath),
+		shellQuote(repoPath),
+		shellQuote(repoPath),
+		shellQuote(repoPath), shellQuote(repoPath),
 	)
 	return exec.Command("bash", "-c", script), errLogPath, nil
 }
@@ -353,6 +353,11 @@ func CloneBare(url, projectsDir string) error {
 	}
 
 	return nil
+}
+
+// shellQuote returns a single-quoted shell string, safe against $ and backtick expansion.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 var sanitizeRe = regexp.MustCompile(`[^A-Za-z0-9_-]`)

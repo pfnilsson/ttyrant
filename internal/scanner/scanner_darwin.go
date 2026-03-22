@@ -41,7 +41,7 @@ func resolveCwdWithLsof(ctx context.Context, pid int) string {
 		return ""
 	}
 
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.HasPrefix(line, "n") && len(line) > 1 {
 			return line[1:]
 		}

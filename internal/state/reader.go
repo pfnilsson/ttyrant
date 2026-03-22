@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,7 @@ func ReadAllStates() ([]model.HookState, error) {
 		path := filepath.Join(dir, entry.Name())
 		s, err := readStateFileAt(path)
 		if err != nil {
-			// Skip corrupt files.
+			fmt.Fprintf(os.Stderr, "ttyrant: warning: skipping corrupt state file %s: %v\n", entry.Name(), err)
 			continue
 		}
 		if s != nil {

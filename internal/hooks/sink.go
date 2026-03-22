@@ -141,7 +141,7 @@ func appendEventLog(t time.Time, payload HookPayload) error {
 	filename := t.Format("2006-01-02") + ".log"
 	path := filepath.Join(state.EventsDir(), filename)
 
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
