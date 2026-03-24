@@ -84,6 +84,16 @@ func ProcessHookEvent(r io.Reader, pid int) error {
 		}
 	}
 
+	// Guard: don't let late-arriving completion events override needs_input.
+	// PostToolUse for a previous tool can arrive after PermissionRequest
+	// for the next tool due to hook process scheduling.
+	if existing != nil && existing.Status == model.StatusNeedsInput {
+		switch payload.HookEventName {
+		case "PostToolUse", "PostToolUseFailure", "SubagentStop", "TaskCompleted":
+			return nil
+		}
+	}
+
 	// Track when the user last submitted a prompt. This is used for the
 	// sound cooldown — we only suppress sound if the user JUST sent a new
 	// prompt (meaning they're actively watching). Permission grants and
@@ -215,14 +225,29 @@ func RunNotify(cwd string, expectedSeq int64) {
 		return
 	}
 	if s.Sequence != expectedSeq {
-		// A newer event arrived — the Stop was mid-task.
-		return
+		// A newer event arrived. Only abort if it represents actual new
+		// work (e.g. PreToolUse). Completion events like SubagentStop or
+		// PostToolUse are just cleanup from the task that ended — they
+		// shouldn't cancel the Stop→Done promotion.
+		if isNewWorkEvent(s.Event) {
+			return
+		}
 	}
 	// Sequence matches — the Stop was real. Promote to DONE.
 	s.Status = model.StatusDone
 	s.Sequence = time.Now().UnixMicro()
 	_ = state.WriteState(s)
 	audio.PlaySync()
+}
+
+// isNewWorkEvent returns true for events that indicate Claude started new work
+// after a Stop, as opposed to cleanup from a completed task.
+func isNewWorkEvent(event string) bool {
+	switch event {
+	case "PreToolUse", "UserPromptSubmit", "SubagentStart", "SessionStart", "ElicitationResult":
+		return true
+	}
+	return false
 }
 
 // GetPIDFromEnv tries to get the Claude Code PID from environment variables.

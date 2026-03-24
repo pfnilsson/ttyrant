@@ -330,6 +330,89 @@ func TestProcessHookEvent_NewPromptAfterDone(t *testing.T) {
 	}
 }
 
+func TestProcessHookEvent_PostToolUseDoesNotOverrideNeedsInput(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", tmp)
+
+	// PermissionRequest sets needs_input.
+	p1 := `{"session_id":"s1","cwd":"/project","hook_event_name":"PermissionRequest","tool_name":"Bash"}`
+	if err := ProcessHookEvent(strings.NewReader(p1), 1234); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := state.ReadStateFile("/project")
+	if s.Status != model.StatusNeedsInput {
+		t.Fatalf("Status = %q, want needs_input", s.Status)
+	}
+
+	// Late-arriving PostToolUse for a previous tool should NOT override.
+	p2 := `{"session_id":"s1","cwd":"/project","hook_event_name":"PostToolUse","tool_name":"Read"}`
+	if err := ProcessHookEvent(strings.NewReader(p2), 1234); err != nil {
+		t.Fatal(err)
+	}
+	s, _ = state.ReadStateFile("/project")
+	if s.Status != model.StatusNeedsInput {
+		t.Errorf("Status = %q, want needs_input (PostToolUse should not override)", s.Status)
+	}
+}
+
+func TestProcessHookEvent_PreToolUseClearsNeedsInput(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", tmp)
+
+	// PermissionRequest sets needs_input.
+	p1 := `{"session_id":"s1","cwd":"/project","hook_event_name":"PermissionRequest","tool_name":"Bash"}`
+	if err := ProcessHookEvent(strings.NewReader(p1), 1234); err != nil {
+		t.Fatal(err)
+	}
+
+	// PreToolUse (permission was granted, tool starts) should clear needs_input.
+	p2 := `{"session_id":"s1","cwd":"/project","hook_event_name":"PreToolUse","tool_name":"Bash"}`
+	if err := ProcessHookEvent(strings.NewReader(p2), 1234); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := state.ReadStateFile("/project")
+	if s.Status != model.StatusWorking {
+		t.Errorf("Status = %q, want working", s.Status)
+	}
+}
+
+func TestProcessHookEvent_SubagentStopDoesNotOverrideNeedsInput(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", tmp)
+
+	// PermissionRequest sets needs_input.
+	p1 := `{"session_id":"s1","cwd":"/project","hook_event_name":"PermissionRequest","tool_name":"Bash"}`
+	if err := ProcessHookEvent(strings.NewReader(p1), 1234); err != nil {
+		t.Fatal(err)
+	}
+
+	// SubagentStop should NOT override needs_input.
+	p2 := `{"session_id":"s1","cwd":"/project","hook_event_name":"SubagentStop"}`
+	if err := ProcessHookEvent(strings.NewReader(p2), 1234); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := state.ReadStateFile("/project")
+	if s.Status != model.StatusNeedsInput {
+		t.Errorf("Status = %q, want needs_input", s.Status)
+	}
+}
+
+func TestIsNewWorkEvent(t *testing.T) {
+	newWork := []string{"PreToolUse", "UserPromptSubmit", "SubagentStart", "SessionStart", "ElicitationResult"}
+	for _, e := range newWork {
+		if !isNewWorkEvent(e) {
+			t.Errorf("isNewWorkEvent(%q) = false, want true", e)
+		}
+	}
+
+	notNewWork := []string{"PostToolUse", "SubagentStop", "PostToolUseFailure", "TaskCompleted", "Stop", "Notification"}
+	for _, e := range notNewWork {
+		if isNewWorkEvent(e) {
+			t.Errorf("isNewWorkEvent(%q) = true, want false", e)
+		}
+	}
+}
+
 func TestProcessHookEvent_FixtureFiles(t *testing.T) {
 	fixtures := []struct {
 		file   string
