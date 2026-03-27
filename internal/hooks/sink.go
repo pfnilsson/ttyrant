@@ -110,13 +110,17 @@ func ProcessHookEvent(r io.Reader, pid int) error {
 	// Sound: needs_input is always genuine (permission/elicitation) — play
 	// immediately. Stop→done is debounced because Stop sometimes fires
 	// mid-task and gets overridden by PreToolUse within ~250ms.
-	if existing != nil && existing.Status == model.StatusWorking &&
-		!lastPromptAt.IsZero() && now.Sub(lastPromptAt) >= soundCooldown {
-		if status == model.StatusNeedsInput {
-			audio.Play()
-		} else if status == model.StatusDone {
-			scheduleDebouncedSound(payload.Cwd, seq)
-		}
+	soundAllowed := existing != nil && existing.Status == model.StatusWorking &&
+		!lastPromptAt.IsZero() && now.Sub(lastPromptAt) >= soundCooldown
+	if soundAllowed && status == model.StatusNeedsInput {
+		audio.Play()
+	}
+
+	// Always schedule debounced promotion for Stop events — status
+	// promotion must not be gated on sound cooldown. Sound is optional.
+	if status == model.StatusDone && existing != nil && existing.Status == model.StatusWorking {
+		playSound := soundAllowed
+		scheduleDebouncedDone(payload.Cwd, seq, playSound)
 	}
 
 	// Don't write DONE for Stop immediately — the debounced _notify
@@ -195,14 +199,19 @@ func appendEventLog(t time.Time, payload HookPayload) error {
 const soundCooldown = 15 * time.Second
 const soundDebounce = 500 * time.Millisecond
 
-// scheduleDebouncedSound spawns a detached ttyrant process that waits briefly,
-// then plays sound only if the state hasn't been overridden by a newer event.
-func scheduleDebouncedSound(cwd string, seq int64) {
+// scheduleDebouncedDone spawns a detached ttyrant process that waits briefly,
+// then promotes the status to DONE if no new work has started. Sound is only
+// played when playSound is true (i.e. sound cooldown has elapsed).
+func scheduleDebouncedDone(cwd string, seq int64, playSound bool) {
 	exe, err := os.Executable()
 	if err != nil {
 		return
 	}
-	cmd := exec.Command(exe, "_notify", cwd, fmt.Sprintf("%d", seq))
+	args := []string{"_notify", cwd, fmt.Sprintf("%d", seq)}
+	if !playSound {
+		args = append(args, "--no-sound")
+	}
+	cmd := exec.Command(exe, args...)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -216,8 +225,8 @@ func scheduleDebouncedSound(cwd string, seq int64) {
 
 // RunNotify is the implementation of the _notify subcommand.
 // It waits briefly, then checks if the Stop was real (no newer events).
-// If so, it promotes the status to DONE and plays sound.
-func RunNotify(cwd string, expectedSeq int64) {
+// If so, it promotes the status to DONE and optionally plays sound.
+func RunNotify(cwd string, expectedSeq int64, playSound bool) {
 	time.Sleep(soundDebounce)
 
 	s, err := state.ReadStateFile(cwd)
@@ -237,7 +246,9 @@ func RunNotify(cwd string, expectedSeq int64) {
 	s.Status = model.StatusDone
 	s.Sequence = time.Now().UnixMicro()
 	_ = state.WriteState(s)
-	audio.PlaySync()
+	if playSound {
+		audio.PlaySync()
+	}
 }
 
 // isNewWorkEvent returns true for events that indicate Claude started new work

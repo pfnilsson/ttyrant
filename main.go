@@ -139,8 +139,8 @@ func runHook() {
 }
 
 func runNotify() {
-	// Internal subcommand: ttyrant _notify <cwd> <sequence>
-	// Waits briefly, then plays sound if the state still matches.
+	// Internal subcommand: ttyrant _notify <cwd> <sequence> [--no-sound]
+	// Waits briefly, then promotes to DONE if the state still matches.
 	if len(os.Args) < 4 {
 		os.Exit(1)
 	}
@@ -148,7 +148,12 @@ func runNotify() {
 	seq := int64(0)
 	fmt.Sscanf(os.Args[3], "%d", &seq)
 
-	hooks.RunNotify(cwd, seq)
+	playSound := true
+	if len(os.Args) >= 5 && os.Args[4] == "--no-sound" {
+		playSound = false
+	}
+
+	hooks.RunNotify(cwd, seq, playSound)
 }
 
 func runDoctor() {
