@@ -25,11 +25,14 @@ func getVersion() string {
 
 func main() {
 	if len(os.Args) < 2 {
-		runTUI()
+		runTUI(nil)
 		return
 	}
 
 	switch os.Args[1] {
+	case "--open":
+		runTUI(tui.WithOpen())
+		return
 	case "--version":
 		fmt.Println("ttyrant " + getVersion())
 	case "hook":
@@ -53,14 +56,19 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  uninstall-hooks   Remove ttyrant hooks from Claude Code\n")
 		fmt.Fprintf(os.Stderr, "  doctor            Run diagnostic checks\n")
 		fmt.Fprintf(os.Stderr, "  --version         Print version\n")
+		fmt.Fprintf(os.Stderr, "  --open            Launch TUI directly into project open flow\n")
 		fmt.Fprintf(os.Stderr, "\nRun with no arguments to launch the TUI dashboard.\n")
 		os.Exit(1)
 	}
 }
 
-func runTUI() {
+func runTUI(opt tui.Option) {
 	defer audio.Cleanup()
-	m := tui.New()
+	var opts []tui.Option
+	if opt != nil {
+		opts = append(opts, opt)
+	}
+	m := tui.New(opts...)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "tui error: %v\n", err)

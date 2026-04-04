@@ -110,8 +110,10 @@ func (p *picker) update(msg tea.KeyMsg) (string, bool, tea.Cmd) {
 			return sel, false, nil
 		}
 		// No match — return raw input for new branch creation.
-		if raw := strings.TrimSpace(p.input.Value()); raw != "" {
-			return raw, false, nil
+		if p.allowCreate {
+			if raw := strings.TrimSpace(p.input.Value()); raw != "" {
+				return raw, false, nil
+			}
 		}
 		return "", false, nil
 	}

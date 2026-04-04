@@ -60,18 +60,31 @@ type Model struct {
 	openStep    int // 0=none, 1=project picker, 2=worktree picker (bare repo)
 	openProject worktree.Project
 
-	copyFlash bool // briefly show "Copied!" after yank
-	showHelp  bool // help popup visible
+	copyFlash    bool // briefly show "Copied!" after yank
+	showHelp     bool // help popup visible
+	launchOpen   bool // launch directly into open flow
+}
+
+// Option configures the TUI model.
+type Option func(*Model)
+
+// WithOpen makes the TUI launch directly into the open-project flow.
+func WithOpen() Option {
+	return func(m *Model) { m.launchOpen = true }
 }
 
 // New creates the initial TUI model.
-func New() Model {
+func New(opts ...Option) Model {
 	cached := state.ReadCache()
 	sortRows(cached)
-	return Model{
+	m := Model{
 		rows:    cached,
 		scanner: scanner.New(),
 	}
+	for _, o := range opts {
+		o(&m)
+	}
+	return m
 }
 
 // tickMsg triggers periodic refresh.
@@ -144,7 +157,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sortRows(m.rows)
 		m.clampCursor()
 
-		if firstLoad && len(m.rows) == 0 && !m.showHooksPrompt {
+		if firstLoad && (m.launchOpen || (len(m.rows) == 0 && !m.showHooksPrompt)) {
+			m.launchOpen = false
 			return m.startOpen()
 		}
 		return m, nil
