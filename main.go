@@ -148,10 +148,7 @@ func runNotify() {
 	seq := int64(0)
 	fmt.Sscanf(os.Args[3], "%d", &seq)
 
-	playSound := true
-	if len(os.Args) >= 5 && os.Args[4] == "--no-sound" {
-		playSound = false
-	}
+	playSound := len(os.Args) < 5 || os.Args[4] != "--no-sound"
 
 	hooks.RunNotify(cwd, seq, playSound)
 }

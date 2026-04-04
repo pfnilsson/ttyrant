@@ -312,9 +312,10 @@ func (m Model) openBranchPicker() (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.picker, cmd = newPicker(
 		fmt.Sprintf("Branch for %s", m.wtNewRepoName),
-		"no match = new branch",
+		"",
 		branches,
 	)
+	m.picker.allowCreate = true
 	m.wtNewStep = 2
 	return m, cmd
 }

@@ -10,13 +10,14 @@ import (
 )
 
 type picker struct {
-	title   string
-	hint    string
-	input   textinput.Model
-	items   []string   // fuzzy match targets
-	labels  []string   // display labels (if nil, items are used)
-	matches []fuzzy.Match
-	cursor  int
+	title       string
+	hint        string
+	input       textinput.Model
+	items       []string   // fuzzy match targets
+	labels      []string   // display labels (if nil, items are used)
+	matches     []fuzzy.Match
+	cursor      int
+	allowCreate bool // show synthetic "create" entry for raw input
 }
 
 func newPicker(title, hint string, items []string) (picker, tea.Cmd) {
@@ -62,6 +63,23 @@ func (p *picker) refilter() {
 	} else {
 		p.matches = fuzzy.Find(query, p.items)
 	}
+
+	// Prepend a synthetic "create" entry when the raw input doesn't exactly
+	// match any item, so the user can select their literal text.
+	if p.allowCreate && query != "" {
+		exact := false
+		for _, m := range p.matches {
+			if m.Str == query {
+				exact = true
+				break
+			}
+		}
+		if !exact {
+			create := fuzzy.Match{Str: query, Index: -1}
+			p.matches = append([]fuzzy.Match{create}, p.matches...)
+		}
+	}
+
 	if p.cursor >= len(p.matches) {
 		p.cursor = max(len(p.matches)-1, 0)
 	}
@@ -148,10 +166,18 @@ func (p picker) view(width, height int) string {
 		if i == p.cursor {
 			prefix = styleDot.Foreground(colorPrimary).Render("▶ ")
 		}
-		display := p.label(m)
 		sel := i == p.cursor
-		if p.labels != nil {
-			display = highlightMatchInLabel(display, m.Str, m, sel)
+		var display string
+		if m.Index == -1 {
+			// Synthetic "create" entry.
+			label := "+ create \"" + m.Str + "\""
+			if sel {
+				display = lipgloss.NewStyle().Foreground(colorPrimary).Render(label)
+			} else {
+				display = styleHelp.Render(label)
+			}
+		} else if p.labels != nil {
+			display = highlightMatchInLabel(p.label(m), m.Str, m, sel)
 		} else {
 			display = highlightMatch(m, sel)
 		}
