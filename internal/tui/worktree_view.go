@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -73,8 +74,8 @@ func wtRefreshCmd() tea.Cmd {
 
 // Column widths for worktree view.
 const (
-	wtPrefixW  = 6 // cursor(2) + id(1) + space(1) + dot(1) + space(1)
-	wtRepoW    = 20
+	wtPrefixW = 6 // cursor(2) + id(1) + space(1) + dot(1) + space(1)
+	wtRepoW   = 20
 )
 
 func wtSessionDot(hasSession bool) string {
@@ -379,13 +380,7 @@ func (m Model) handlePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case 2: // branch selected
 		// Check if this is a new branch (not in remote list).
-		isNew := true
-		for _, r := range m.wtRemotes {
-			if r == selected {
-				isNew = false
-				break
-			}
-		}
+		isNew := !slices.Contains(m.wtRemotes, selected)
 		if isNew {
 			m.wtNewBranch = selected
 			return m.openBasePicker()
