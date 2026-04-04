@@ -241,6 +241,11 @@ func RemoveWorktreeCmd(repoPath, worktreePath string) *exec.Cmd {
 	return exec.Command("git", "-C", repoPath, "worktree", "remove", worktreePath)
 }
 
+// FetchCmd returns an exec.Cmd that fetches from origin with output visible.
+func FetchCmd(repoPath string) *exec.Cmd {
+	return exec.Command("git", "-C", repoPath, "fetch", "origin")
+}
+
 // CloneBareCmd returns an exec.Cmd that clones a bare repo with output visible,
 // and performs the remaining setup steps. The second return value is a temp file
 // path where stderr is captured (for error reporting after the TUI resumes).

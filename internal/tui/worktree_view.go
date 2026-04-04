@@ -178,6 +178,14 @@ func (m Model) handleWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.wtConfirmDelete = true
 		}
 		return m, nil
+	case "f":
+		if m.wtCursor < len(m.wtRows) {
+			row := m.wtRows[m.wtCursor]
+			cmd := worktree.FetchCmd(row.repoPath)
+			return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
+				return wtFetchResultMsg{err: err}
+			})
+		}
 	case "c":
 		return m.startClone()
 	case "j":
@@ -208,6 +216,10 @@ type wtCreateResultMsg struct {
 }
 
 type wtDeleteResultMsg struct {
+	err error
+}
+
+type wtFetchResultMsg struct {
 	err error
 }
 
@@ -504,6 +516,7 @@ var wtBindings = []binding{
 	{"o", "open"},
 	{"w", "sessions"},
 	{"n", "new worktree"},
+	{"f", "fetch"},
 	{"d", "delete"},
 	{"c", "clone"},
 }

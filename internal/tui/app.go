@@ -191,6 +191,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, wtRefreshCmd()
 
+	case wtFetchResultMsg:
+		if msg.err != nil {
+			m.setError(msg.err)
+		}
+		return m, wtRefreshCmd()
+
 	case wtRefreshMsg:
 		m.wtRows = msg.rows
 		if msg.err != nil {
