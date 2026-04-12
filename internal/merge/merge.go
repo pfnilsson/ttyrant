@@ -19,6 +19,11 @@ const (
 	// we consider the hook state stale and degrade confidence.
 	staleHookThreshold = 5 * time.Minute
 
+	// workingIdleThreshold is how long Working status can persist without
+	// new events before we promote to Ready. Handles the gap between the
+	// last tool completion event and the Stop event (or missing Stop).
+	workingIdleThreshold = 3 * time.Second
+
 	// retentionWindow is how long dead sessions (done/exited) are kept
 	// visible before being removed.
 	retentionWindow = 15 * time.Minute
@@ -145,6 +150,12 @@ func buildRow(sess tmux.Session, proc *model.LiveProcess, hook *model.HookState,
 		} else {
 			row.Status = hook.Status
 			row.StatusSource = model.SourceHooks
+			// Self-healing: if Working with no events for a few seconds,
+			// Claude is likely idle and waiting for the next prompt.
+			if row.Status == model.StatusWorking && now.Sub(hook.LastEventAt) > workingIdleThreshold {
+				row.Status = model.StatusReady
+				row.StatusSource = model.SourceHeuristic
+			}
 		}
 	} else {
 		age := now.Sub(proc.StartTime)

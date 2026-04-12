@@ -245,6 +245,69 @@ func TestMerge_IdleFor(t *testing.T) {
 	}
 }
 
+func TestMerge_WorkingIdlePromotesToReady(t *testing.T) {
+	now := time.Now()
+	sess := sessions("project")
+	procs := []model.LiveProcess{
+		{PID: 100, Cwd: "/project", StartTime: now.Add(-1 * time.Minute)},
+	}
+	hooks := []model.HookState{
+		{Cwd: "/project", PID: 100, Event: "PostToolUse", Status: model.StatusWorking, LastEventAt: now.Add(-5 * time.Second)},
+	}
+
+	rows := Merge(sess, procs, hooks, now)
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1", len(rows))
+	}
+	if rows[0].Status != model.StatusReady {
+		t.Errorf("Status = %q, want ready (working idle > 3s)", rows[0].Status)
+	}
+	if rows[0].StatusSource != model.SourceHeuristic {
+		t.Errorf("StatusSource = %q, want heuristic", rows[0].StatusSource)
+	}
+}
+
+func TestMerge_WorkingRecentStaysWorking(t *testing.T) {
+	now := time.Now()
+	sess := sessions("project")
+	procs := []model.LiveProcess{
+		{PID: 100, Cwd: "/project", StartTime: now.Add(-1 * time.Minute)},
+	}
+	hooks := []model.HookState{
+		{Cwd: "/project", PID: 100, Event: "PreToolUse", Status: model.StatusWorking, LastEventAt: now.Add(-1 * time.Second)},
+	}
+
+	rows := Merge(sess, procs, hooks, now)
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1", len(rows))
+	}
+	if rows[0].Status != model.StatusWorking {
+		t.Errorf("Status = %q, want working (recent event)", rows[0].Status)
+	}
+	if rows[0].StatusSource != model.SourceHooks {
+		t.Errorf("StatusSource = %q, want hooks", rows[0].StatusSource)
+	}
+}
+
+func TestMerge_NeedsInputNotPromotedByIdle(t *testing.T) {
+	now := time.Now()
+	sess := sessions("project")
+	procs := []model.LiveProcess{
+		{PID: 100, Cwd: "/project", StartTime: now.Add(-1 * time.Minute)},
+	}
+	hooks := []model.HookState{
+		{Cwd: "/project", PID: 100, Event: "PermissionRequest", Status: model.StatusNeedsInput, LastEventAt: now.Add(-30 * time.Second)},
+	}
+
+	rows := Merge(sess, procs, hooks, now)
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1", len(rows))
+	}
+	if rows[0].Status != model.StatusNeedsInput {
+		t.Errorf("Status = %q, want needs_input (idle timeout only applies to working)", rows[0].Status)
+	}
+}
+
 func TestMerge_NoTmuxSessions(t *testing.T) {
 	now := time.Now()
 	rows := Merge(nil, nil, nil, now)

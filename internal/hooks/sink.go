@@ -48,57 +48,38 @@ func ProcessHookEvent(r io.Reader, pid int) error {
 		return fmt.Errorf("payload missing hook_event_name")
 	}
 
-	now := time.Now()
-	status := MapEventToStatus(payload.HookEventName)
-
 	// Notification events are informational — don't change status.
-	// The real PermissionRequest and Elicitation events already
-	// handle those transitions. Notification (especially idle_prompt)
-	// would cause spurious NEEDS INPUT after Claude goes idle.
 	if payload.HookEventName == "Notification" {
 		return nil
 	}
 
-	waitingReason := WaitingReason(payload.HookEventName)
-
-	// Load existing state to check sequence ordering and guard transitions.
-	existing, _ := state.ReadStateFile(payload.Cwd)
+	now := time.Now()
 	seq := int64(now.UnixMicro())
+
+	// Load existing state to check sequence ordering and compute transition.
+	existing, _ := state.ReadStateFile(payload.Cwd)
 	if existing != nil && existing.Sequence >= seq {
-		// Out-of-order event — skip.
 		return nil
 	}
 
-	// Guard: don't let Notification events override done/exited status.
-	// After a task completes, Claude Code fires idle_prompt notifications
-	// which would incorrectly flip status to needs_input. Only explicit
-	// new-work events (UserPromptSubmit, SessionStart, PreToolUse) should
-	// clear done/exited.
-	if existing != nil && (existing.Status == model.StatusDone || existing.Status == model.StatusExited) {
-		switch payload.HookEventName {
-		case "UserPromptSubmit", "SessionStart", "PreToolUse", "SessionEnd":
-			// These legitimately start new work or end the session — allow.
-		default:
-			// Everything else (Notification, SubagentStop, etc.) — keep existing status.
+	// Determine next status via FSM transition table, or initial mapping
+	// when this is the first event for this cwd.
+	var status model.SessionStatus
+	if existing != nil {
+		next, allowed := Transition(existing.Status, payload.HookEventName)
+		if !allowed {
 			return nil
 		}
+		status = next
+	} else {
+		status = MapEventToStatus(payload.HookEventName)
 	}
 
-	// Guard: don't let late-arriving completion events override needs_input.
-	// PostToolUse for a previous tool can arrive after PermissionRequest
-	// for the next tool due to hook process scheduling.
-	if existing != nil && existing.Status == model.StatusNeedsInput {
-		switch payload.HookEventName {
-		case "PostToolUse", "PostToolUseFailure", "SubagentStop", "TaskCompleted":
-			return nil
-		}
-	}
+	waitingReason := WaitingReason(payload.HookEventName)
 
 	// Track when the user last submitted a prompt. This is used for the
 	// sound cooldown — we only suppress sound if the user JUST sent a new
-	// prompt (meaning they're actively watching). Permission grants and
-	// elicitation replies are quick interactions that don't indicate the
-	// user is watching, so they don't reset the cooldown.
+	// prompt (meaning they're actively watching).
 	var lastPromptAt time.Time
 	switch {
 	case payload.HookEventName == "UserPromptSubmit":
@@ -125,7 +106,6 @@ func ProcessHookEvent(r io.Reader, pid int) error {
 
 	// Don't write DONE for Stop immediately — the debounced _notify
 	// process will promote to DONE after confirming no follow-up tool use.
-	// This prevents the TUI from briefly flashing DONE on mid-task Stops.
 	writeStatus := status
 	if payload.HookEventName == "Stop" {
 		writeStatus = model.StatusWorking
