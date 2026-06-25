@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"os"
-	"slices"
 	"sort"
 	"strings"
 
@@ -379,13 +378,14 @@ func (m Model) handlePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openBranchPicker()
 
 	case 2: // branch selected
-		// Check if this is a new branch (not in remote list).
-		isNew := !slices.Contains(m.wtRemotes, selected)
-		if isNew {
-			m.wtNewBranch = selected
-			return m.openBasePicker()
+		// Only ask for a base when the branch doesn't exist anywhere yet. The
+		// remote list (git branch -r) misses branches outside a narrowed fetch
+		// refspec, so check the remote directly rather than trusting the list.
+		if worktree.BranchExists(m.wtNewRepoPath, selected) {
+			return m.createWorktree(selected, "")
 		}
-		return m.createWorktree(selected, "")
+		m.wtNewBranch = selected
+		return m.openBasePicker()
 
 	case 3: // base branch selected
 		branch := m.wtNewBranch
