@@ -180,6 +180,20 @@ func ListRemoteBranches(repoPath string) ([]string, error) {
 	return branches, nil
 }
 
+// BranchExists reports whether branch resolves to an existing local branch, a
+// remote-tracking ref, or a branch on origin. The remote lookup is targeted, so
+// it finds branches even under a narrowed fetch refspec that never created a
+// local origin/<branch> ref.
+func BranchExists(repoPath, branch string) bool {
+	for _, ref := range []string{"refs/heads/" + branch, "refs/remotes/origin/" + branch} {
+		if exec.Command("git", "-C", repoPath, "show-ref", "--verify", "--quiet", ref).Run() == nil {
+			return true
+		}
+	}
+	out, err := exec.Command("git", "-C", repoPath, "ls-remote", "--heads", "origin", branch).Output()
+	return err == nil && len(strings.TrimSpace(string(out))) > 0
+}
+
 // CreateWorktree creates a worktree for the given branch.
 // If the branch doesn't exist remotely, a new local branch is created.
 // Returns the worktree path.
@@ -203,8 +217,10 @@ func CreateWorktree(repoPath, branch string) (string, error) {
 }
 
 // CreateWorktreeCmd returns the worktree path and an exec.Cmd that creates it
-// with output visible to the user. Returns ("", nil) if the worktree already exists.
-// If base is non-empty, new branches are created from that base instead of HEAD.
+// with output visible to the user. Returns (path, nil) if the worktree already
+// exists. It checks out an existing local branch; else fetches and tracks an
+// existing remote branch (working even under a narrowed fetch refspec); else
+// creates a new branch — from base if non-empty, otherwise HEAD.
 func CreateWorktreeCmd(repoPath, branch, base string) (string, *exec.Cmd) {
 	wtPath := filepath.Join(repoPath, branch)
 
@@ -212,19 +228,36 @@ func CreateWorktreeCmd(repoPath, branch, base string) (string, *exec.Cmd) {
 		return wtPath, nil
 	}
 
-	var script string
-	if base != "" {
-		script = fmt.Sprintf(
-			`git -C %s worktree add -b %s %s %s 2>&1`,
-			shellQuote(repoPath), shellQuote(branch), shellQuote(wtPath), shellQuote(base),
-		)
-	} else {
-		script = fmt.Sprintf(
-			`git -C %s worktree add %s %s 2>&1 || git -C %s worktree add -b %s %s 2>&1`,
-			shellQuote(repoPath), shellQuote(wtPath), shellQuote(branch),
-			shellQuote(repoPath), shellQuote(branch), shellQuote(wtPath),
-		)
-	}
+	// Assign once via shellQuote, then reference as shell vars to keep the
+	// branching logic readable.
+	script := fmt.Sprintf(`repo=%s
+branch=%s
+wt=%s
+base=%s
+if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+  echo "Checking out existing local branch $branch..."
+  git -C "$repo" worktree add "$wt" "$branch" 2>&1
+else
+  # Explicit refspec fetch so this works even under a narrowed fetch refspec,
+  # where a plain "git fetch origin" never creates origin/$branch.
+  git -C "$repo" fetch origin "$branch:refs/remotes/origin/$branch" 2>/dev/null
+  if git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+    echo "Creating worktree tracking origin/$branch..."
+    git -C "$repo" worktree add --no-track -b "$branch" "$wt" "origin/$branch" 2>&1 || exit 1
+    # Track via config: "git branch --set-upstream-to" rejects refs outside a
+    # narrowed refspec, but the config form does not.
+    git -C "$repo" config "branch.$branch.remote" origin
+    git -C "$repo" config "branch.$branch.merge" "refs/heads/$branch"
+  elif [ -n "$base" ]; then
+    echo "Creating new branch $branch off $base..."
+    git -C "$repo" worktree add -b "$branch" "$wt" "$base" 2>&1
+  else
+    echo "Creating new branch $branch..."
+    git -C "$repo" worktree add -b "$branch" "$wt" 2>&1
+  fi
+fi`,
+		shellQuote(repoPath), shellQuote(branch), shellQuote(wtPath), shellQuote(base),
+	)
 	return wtPath, exec.Command("sh", "-c", script)
 }
 
