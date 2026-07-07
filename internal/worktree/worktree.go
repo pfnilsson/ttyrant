@@ -263,7 +263,7 @@ fi`,
 
 // RemoveWorktree removes a git worktree.
 func RemoveWorktree(repoPath, worktreePath string) error {
-	if err := exec.Command("git", "-C", repoPath, "worktree", "remove", worktreePath).Run(); err != nil {
+	if err := exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", worktreePath).Run(); err != nil {
 		return fmt.Errorf("remove worktree: %w", err)
 	}
 	return nil
@@ -271,7 +271,7 @@ func RemoveWorktree(repoPath, worktreePath string) error {
 
 // RemoveWorktreeCmd returns an exec.Cmd that removes a worktree with output visible.
 func RemoveWorktreeCmd(repoPath, worktreePath string) *exec.Cmd {
-	return exec.Command("git", "-C", repoPath, "worktree", "remove", worktreePath)
+	return exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", worktreePath)
 }
 
 // FetchCmd returns an exec.Cmd that fetches from origin with output visible.
