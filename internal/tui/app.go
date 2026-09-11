@@ -191,7 +191,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, wtRefreshCmd()
 
-	case wtFetchResultMsg:
+	case wtPullResultMsg:
 		if msg.err != nil {
 			m.setError(msg.err)
 		}
