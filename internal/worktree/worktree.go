@@ -274,9 +274,19 @@ func RemoveWorktreeCmd(repoPath, worktreePath string) *exec.Cmd {
 	return exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", worktreePath)
 }
 
-// FetchCmd returns an exec.Cmd that fetches from origin with output visible.
-func FetchCmd(repoPath string) *exec.Cmd {
-	return exec.Command("git", "-C", repoPath, "fetch", "origin")
+// PullCmd returns an exec.Cmd that fetches the given branch from origin and
+// merges it into the worktree at worktreePath, with output visible. Fetching
+// happens against repoPath (the shared repo/bare dir) since some repos use
+// sparse fetch refspecs that don't cover every branch by default; merging
+// happens in worktreePath since that's the actual checkout for the branch.
+func PullCmd(repoPath, worktreePath, branch string) *exec.Cmd {
+	script := fmt.Sprintf(
+		`set -e
+git -C %s fetch origin %s
+git -C %s merge FETCH_HEAD`,
+		shellQuote(repoPath), shellQuote(branch), shellQuote(worktreePath),
+	)
+	return exec.Command("sh", "-c", script)
 }
 
 // CloneBareCmd returns an exec.Cmd that clones a bare repo with output visible,
