@@ -181,9 +181,23 @@ func (m Model) handleWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		if m.wtCursor < len(m.wtRows) {
 			row := m.wtRows[m.wtCursor]
-			cmd := worktree.PullCmd(row.repoPath, row.worktreePath, row.branch)
+			cmd, errLogPath, err := worktree.PullCmd(row.worktreePath, row.branch)
+			if err != nil {
+				m.err = err
+				m.showError = true
+				return m, nil
+			}
 			return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-				return wtPullResultMsg{err: err}
+				defer os.Remove(errLogPath)
+				if err != nil {
+					errOutput, _ := os.ReadFile(errLogPath)
+					detail := strings.TrimSpace(string(errOutput))
+					if detail != "" {
+						return wtPullResultMsg{err: fmt.Errorf("%s", detail)}
+					}
+					return wtPullResultMsg{err: err}
+				}
+				return wtPullResultMsg{}
 			})
 		}
 	case "c":
