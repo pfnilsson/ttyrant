@@ -275,18 +275,31 @@ func RemoveWorktreeCmd(repoPath, worktreePath string) *exec.Cmd {
 }
 
 // PullCmd returns an exec.Cmd that fetches the given branch from origin and
-// merges it into the worktree at worktreePath, with output visible. Fetching
-// happens against repoPath (the shared repo/bare dir) since some repos use
-// sparse fetch refspecs that don't cover every branch by default; merging
-// happens in worktreePath since that's the actual checkout for the branch.
-func PullCmd(repoPath, worktreePath, branch string) *exec.Cmd {
+// merges it into the worktree at worktreePath, with output visible. Both the
+// fetch and the merge run against worktreePath: FETCH_HEAD lives under that
+// worktree's own per-worktree git-dir, not the shared common dir, so fetching
+// elsewhere (e.g. the bare repo root) would write FETCH_HEAD somewhere the
+// merge step can't see it. Remote config (including any narrowed fetch
+// refspec) is shared via the common git-dir, so it's visible here too.
+// The second return value is a temp file path where stderr is captured (for
+// error reporting after the TUI resumes and clears the process output).
+func PullCmd(worktreePath, branch string) (*exec.Cmd, string, error) {
+	errLog, err := os.CreateTemp("", "ttyrant-pull-*.log")
+	if err != nil {
+		return nil, "", fmt.Errorf("create temp file: %w", err)
+	}
+	errLogPath := errLog.Name()
+	errLog.Close()
+
 	script := fmt.Sprintf(
 		`set -e
+exec 2> >(tee %s >&2)
 git -C %s fetch origin %s
 git -C %s merge FETCH_HEAD`,
-		shellQuote(repoPath), shellQuote(branch), shellQuote(worktreePath),
+		shellQuote(errLogPath),
+		shellQuote(worktreePath), shellQuote(branch), shellQuote(worktreePath),
 	)
-	return exec.Command("sh", "-c", script)
+	return exec.Command("bash", "-c", script), errLogPath, nil
 }
 
 // CloneBareCmd returns an exec.Cmd that clones a bare repo with output visible,
